@@ -1,0 +1,2 @@
+pyvisa-py
+pyvisa-sim

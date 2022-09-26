@@ -3,5 +3,13 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"python.defaultInterpreterPath": "C:\\Users\\maerki\\AppData\\Local\\Programs\\Python\\Python37\\python.exe",
+		"python.analysis.extraPaths": [
+			// Why is this required ???
+			"qcodes", "C:\\Projekte\\ETH-labber_AMI430\\git_Qcodes"
+		],
+		"python.formatting.provider": "black"
+	}
 }
