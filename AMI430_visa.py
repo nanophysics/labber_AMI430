@@ -1,6 +1,6 @@
 import pathlib
 import logging
-from enum import Enum, IntEnum
+import enum
 from typing import Any, Iterable, Iterator, List, Dict
 
 import pyvisa
@@ -19,7 +19,7 @@ assert FILENAME_VISA_SIM.exists()
 _VISA_TERMINATOR = "\n"
 
 
-class AMI430State(EnumMixin, IntEnum):
+class AMI430State(EnumMixin, enum.IntEnum):
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
@@ -41,8 +41,7 @@ class AMI430State(EnumMixin, IntEnum):
             AMI430State.AT_ZERO_CURRENT: LabberState.IDLE,
         }.get(self, LabberState.ERROR)
 
-
-class LabberState(EnumMixin, IntEnum):
+class LabberState(EnumMixin, enum.IntEnum):
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
@@ -86,8 +85,16 @@ class VisaStation:
         return state.labber_state
 
     @labber_state.setter
-    def labber_state(self, state) -> None:
-        self._labber_state = state
+    def labber_state(self, state: LabberState) -> None:
+        pass
+        # TODO: Take action, for example RAMING
+        assert state in LabberState.set_by_labber()
+        if state == LabberState.RAMPING:
+            # TODO: Magnete sortieren nach Feld verringern, vergrössern
+            # TODO: Auf ersten Magnet warten, dann zweiten Magnet....
+            for magnet in self.visa_magnets:
+                magnet.ramping()
+            return
 
     def open(self) -> None:
         def add_magnet(magnet: Magnet, name: str):
