@@ -2,24 +2,11 @@
 
 ## Installation
 
-Existing installation manuals
-| Labber | Pyboard | Python | State | Project |
-| - | - | - | - | - |
-| Labber | - |3.7+visa+qcodes| .. | [labber_AMI430](https://github.com/nanophysics/labber_AMI430) |
-| Labber | Pyboard | 3.7 | actual | [heater_thermometrie_2021](https://github.com/nanophysics/heater_thermometrie_2021/blob/main/doc_installation/README_INSTALLATION_python3_7_9.md) |
-| Labber | Pyboard | 3.7 | python installation is missing | [compact_2012](https://github.com/nanophysics/compact_2012/blob/master/doc_installation/README_INSTALLATION_WITH_LABBER.md) |
-| - | - | py3.9| actual | [pymeas noise](https://github.com/nanophysics/pymeas2019_noise/tree/master/documentation) |
+The installation of python and the labber driver is described here
+
+https://github.com/nanophysics/compact_2012/tree/master/doc_installation/README_INSTALLATION_python3_7_9.md
 
 
-
-
-```
-cd git_qcodes
-
-C:\Users\maerki\AppData\Local\Programs\Python\Python37\python.exe -m pip install --no-warn-script-location -e .
-
-C:\Users\maerki\AppData\Local\Programs\Python\Python37\python.exe -m pip install --no-warn-script-location pyvisa-py pyvisa-sim
-```
 
 ## Stati
 
