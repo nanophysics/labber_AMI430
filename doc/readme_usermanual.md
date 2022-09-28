@@ -1,13 +1,5 @@
 # User Manual
 
-## Installation
-
-The installation of python and the labber driver is described here
-
-https://github.com/nanophysics/compact_2012/tree/master/doc_installation/README_INSTALLATION_python3_7_9.md
-
-
-
 ## Stati
 
 The code implementing this table may be found here: AMI430_visa.py
