@@ -18,17 +18,17 @@ def get_station():
         use_visa_simulation = True,
         x_axis=Magnet(
             ip_address="169.254.47.78",
-            current_limit=61.98,  # Ampere
-            field_limit=6,  # Tesla
-            ramp_rate_limit=0.0909,  # Ampere/s
-            switchheater=True,
+            current_limit_A=61.98,  # Ampere
+            field_limit_T=6,  # Tesla
+            ramp_rate_limit_Apers=0.0909,  # Ampere/s
+            has_switchheater=True,
         ),
         y_axis=Magnet(
             ip_address="169.254.223.195",
-            current_limit=12.23,  # Ampere
-            field_limit=12.34,  # Tesla
-            ramp_rate_limit=12.34,  # Ampere/s
-            switchheater=False,
+            current_limit_A=12.23,  # Ampere
+            field_limit_T=12.34,  # Tesla
+            ramp_rate_limit_Apers=12.34,  # Ampere/s
+            has_switchheater=False,
         )
     )
     return station
