@@ -2,10 +2,9 @@ import pathlib
 import logging
 import time
 import enum
-from typing import Any, Iterable, Iterator, List, Dict
+from typing import Any, List
 
 import pyvisa
-import pyvisa.constants as vi_const
 import pyvisa.resources
 
 from AMI430_utils import Station, Magnet, Axis
@@ -48,36 +47,250 @@ class LabberState(EnumMixin, enum.IntEnum):
     HOLDING = 2
     PAUSED = 3
     IDLE = 4
-    # OFF = 5
     MISALIGNED = 6
     ERROR = 7
 
     @classmethod
-    def set_by_labber(cls) -> List["LabberState"]:
-        return [cls.RAMPING, cls.PAUSED, cls.OFF]
+    def valid_set_by_labber(cls) -> List["LabberState"]:
+        return [cls.RAMPING, cls.PAUSED]
 
     @classmethod
-    def set_by_magnet(cls) -> List["LabberState"]:
+    def valid_set_by_magnet(cls) -> List["LabberState"]:
         return [cls.HOLDING, cls.IDLE]
+
+
+class MagnetRampingState(enum.IntEnum):
+    INIT = 1
+    WAITFOR_CURRENT = 2
+    WAITFOR_SWITCH_WARM = 3
+    WAITFOR_HOLDING = 4
+    WAITFOR_SWITCH_COLD = 5
+    WAITFOR_ZERO_CURRENT = 6
+    DONE = 7
+
+
+class RampingStatemachineMagnet:
+    def __init__(self, visa_magnet: "VisaMagnet"):
+        self._visa_magnet = visa_magnet
+        self._state: MagnetRampingState = MagnetRampingState.INIT
+        self._timeout = time.time()
+
+        logger.debug(
+            self.prefix(
+                f"Magnet {self._visa_magnet.name}: Start ramping to {self._visa_magnet.field_setpoint_Tesla} T"
+            )
+        )
+        if (
+            abs(self._visa_magnet.field_setpoint_Tesla - self._visa_magnet.visa_field_T)
+            < 1e-6
+        ):
+            if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                self._state == MagnetRampingState.DONE
+                return
+
+        # self._visa_magnet.ensure_switch_on()
+
+    def is_done(self):
+        return self._state == MagnetRampingState.DONE
+
+    def prefix(self, msg) -> str:
+        return self._visa_magnet.prefix(msg)
+
+    @property
+    def magnet(self) -> "Magnet":
+        return self._visa_magnet.magnet
+
+    def tick(self):
+        state_before = self._state
+        self._tick()
+        state_after = self._state
+        if state_before != state_after:
+            logger.debug(
+                self.prefix(
+                    f"Magnet {self._visa_magnet.name}: {state_before.name} -> {state_after.name}, timeout {self._timeout - time.time():0.1f} s"
+                )
+            )
+
+    def _tick(self):
+        def start_ramping():
+            self._visa_magnet.write_raw("PAUSE")
+
+            logger.info(self.prefix("Field Ramp"))
+            # self._visa_magnet.write_raw("CONF:RAMP:RATE:SEG 1")
+            self._visa_magnet.write_raw(
+                f"CONF:RAMP:RATE:FIELD 1,{self._visa_magnet.field_ramp_TeslaPers:f},0"
+            )
+            self._visa_magnet.write_raw(
+                f"CONF:FIELD:TARG {self._visa_magnet.field_setpoint_Tesla:f}"
+            )
+            time.time() + self._visa_magnet.expected_ramp_duration_s * 1.5
+
+            self._visa_magnet.write_raw("RAMP")
+
+        if self._state == MagnetRampingState.INIT:
+            if not self.magnet.has_switchheater:
+                start_ramping()
+                self._state = MagnetRampingState.WAITFOR_HOLDING
+                return
+
+            if self._visa_magnet.ask_raw("PS?", astype=int) == 1:
+                # this assumes that the switch is already heated we neglect to wait for swith to warm and directly set the paused state
+                self._visa_magnet.write_raw("PAUSE")
+                self._state = MagnetRampingState.WAITFOR_SWITCH_WARM
+                return
+
+            # We are at zero current: Match supply and magnet current!
+            self._visa_magnet.write_raw("RAMP")
+            self._timeout = (
+                time.time() + self.magnet.expected_current_ramptime_cold_switch_s * 1.5
+            )
+            self._state = MagnetRampingState.WAITFOR_CURRENT
+            return
+
+        if self._state == MagnetRampingState.WAITFOR_CURRENT:
+            if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                self._visa_magnet.write_raw(
+                    "PS 1"
+                )  # Persistent switch heater ON (heat up)
+                self._timeout = (
+                    time.time() + self.magnet.switchheater_heat_time_s + 10.0
+                )
+                self._state = MagnetRampingState.WAITFOR_SWITCH_WARM
+                return
+            return
+
+        if self._state == MagnetRampingState.WAITFOR_SWITCH_WARM:
+            if self._visa_magnet.visa_state == AMI430State.PAUSED:
+                start_ramping()
+                self._state = MagnetRampingState.WAITFOR_HOLDING
+                return
+            return
+
+        if self._state == MagnetRampingState.WAITFOR_HOLDING:
+            if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                if not self.magnet.has_switchheater:
+                    self._state = MagnetRampingState.DONE
+                    return
+                if self._visa_magnet.visa_station.holding_switchheater_on:
+                    self._state = MagnetRampingState.DONE
+                    return
+                logger.info(self.prefix("Persistent switch cooling"))
+                self._visa_magnet.write_raw(
+                    "PS 0"
+                )  # Persistent switch heater OFF (cool down)
+                self._timeout = (
+                    time.time() + self.magnet.switchheater_cool_time_s + 10.0
+                )
+                self._state = MagnetRampingState.WAITFOR_SWITCH_COLD
+            return
+
+        if self._state == MagnetRampingState.WAITFOR_SWITCH_COLD:
+            if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                if self._visa_magnet.visa_station.holding_current:
+                    self._state = MagnetRampingState.DONE
+                    return
+
+                logger.info(self.prefix("Current zeroing"))
+                self._visa_magnet.write_raw("ZERO")
+                self._state = MagnetRampingState.WAITFOR_ZERO_CURRENT
+                self._timeout = (
+                    time.time()
+                    + self.magnet.expected_current_ramptime_cold_switch_s * 1.5
+                )
+                return
+
+            if time.time() > self._timeout:
+                raise Exception("Timeout")
+            return
+        if self._state == MagnetRampingState.WAITFOR_ZERO_CURRENT:
+            if self._visa_magnet.visa_state == AMI430State.AT_ZERO_CURRENT:
+                self._state = MagnetRampingState.DONE
+                return
+            if time.time() > self._timeout:
+                raise Exception("Timeout")
+            return
+        assert self._state == MagnetRampingState.DONE
+
+
+class RampingStatemachineStation:
+    """
+    Order magnets by ramp direccion
+    For each magnet
+    - send command: ramp
+    - wait for status HOLIDING
+    - send command: cool down switch
+    - wait for status ...
+    - send command: zero current
+    - wait for status ...
+    """
+
+    def __init__(self, visa_station: "VisaStation"):
+        self._visa_station = visa_station
+        self._magnets_to_be_ramped: List[RampingStatemachineMagnet] = []
+        "List of magnets waiting for there field to be ramped."
+        self.done = False
+
+        self._current_magnet: RampingStatemachineMagnet = None
+        tmp_magnets = []
+        for visa_magnet in visa_station.visa_magnets:
+            current_field_T = visa_magnet.visa_field_T
+            set_field_T = visa_magnet.field_setpoint_Tesla
+            increment_T = set_field_T - current_field_T
+            # if abs(increment_T) > 1e-6:
+            tmp_magnets.append((increment_T, visa_magnet))
+        tmp_magnets.sort()
+        for _, visa_magnet in tmp_magnets:
+            self._magnets_to_be_ramped.append(visa_magnet)
+
+    def tick(self):
+        "process next step"
+        if self._current_magnet is None:
+            if len(self._magnets_to_be_ramped) == 0:
+                # We are done: All magnets reached the new field and
+                # are in state HOLDING
+                self.done = True
+                return
+
+            # Lets ramp the field of the next magnet
+            self._current_magnet = RampingStatemachineMagnet(
+                visa_magnet=self._magnets_to_be_ramped.pop(0)
+            )
+
+        self._current_magnet.tick()
+
+        if self._current_magnet.is_done():
+            self._current_magnet = None
 
 
 class VisaStation:
     def __init__(self, station: Station):
+        self.holding_switchheater_on: bool = True
+        "Only relavant for the magnet with switchheader"
+        self.holding_current = True
+        "Only relavant for the magnet with switchheader"
+
         self.station = station
         self.visa_magnet_x: "VisaMagnet" = None
         self.visa_magnet_y: "VisaMagnet" = None
         self.visa_magnet_z: "VisaMagnet" = None
+        self._state_machine: RampingStatemachineStation = None
 
     @property
-    def visa_magnets(self) -> Iterable["VisaMagnet"]:
-        yield self.visa_magnet_x
-        yield self.visa_magnet_y
-        if self.visa_magnet_z is not None:
-            yield self.visa_magnet_z
+    def visa_magnets(self) -> List["VisaMagnet"]:
+        return [
+            visa_magnet
+            for visa_magnet in (
+                self.visa_magnet_x,
+                self.visa_magnet_y,
+                self.visa_magnet_z,
+            )
+            if visa_magnet is not None
+        ]
 
-    @property
-    def labber_state(self) -> LabberState:
-        states = {magnet.get_visa_state() for magnet in self.visa_magnets}
+    def get_labber_state(self) -> LabberState:
+        if self._state_machine is not None:
+            return LabberState.MISALIGNED
+        states = {magnet.visa_state for magnet in self.visa_magnets}
         if len(states) > 1:
             logger.info(f"LabberState.MISALIGNED: {states}")
             return LabberState.MISALIGNED
@@ -86,17 +299,18 @@ class VisaStation:
         assert isinstance(state, AMI430State)
         return state.labber_state
 
-    @labber_state.setter
-    def labber_state(self, state: LabberState) -> None:
-        pass
-        # TODO: Take action, for example RAMING
-        assert state in LabberState.set_by_labber()
-        if state == LabberState.RAMPING:
-            # TODO: Magnete sortieren nach Feld verringern, vergrössern
-            # TODO: Auf ersten Magnet warten, dann zweiten Magnet....
-            for magnet in self.visa_magnets:
-                magnet.ramping()
+    def start_ramping(self) -> None:
+        self._state_machine = RampingStatemachineStation(visa_station=self)
+
+    def tick(self) -> None:
+        if self._state_machine is None:
             return
+
+        if self._state_machine.done:
+            self._state_machine = None
+            return
+
+        self._state_machine.tick()
 
     def open(self) -> None:
         def add_magnet(magnet: Magnet, name: str):
@@ -116,10 +330,6 @@ class VisaStation:
         for visa_magnet in self.visa_magnets:
             visa_magnet.close()
 
-    def ramping(self) -> None:
-        for visa_magnet in self.visa_magnets:
-            visa_magnet.ramping()
-
 
 class VisaMagnet:
     def __init__(self, visa_station: VisaStation, magnet: Magnet, name: str):
@@ -127,7 +337,7 @@ class VisaMagnet:
         self.magnet = magnet
         self.name = name
         self.visa_handle: pyvisa.resources.MessageBasedResource = None
-        self.visa_log = logger
+
         self.field_setpoint_Tesla: float = 0.0
         self.field_ramp_TeslaPers: float = 0.0
 
@@ -152,6 +362,10 @@ class VisaMagnet:
         return "@ivi"
         # return "@py"
 
+    @property
+    def expected_ramp_duration_s(self) -> float:
+        return self.field_setpoint_Tesla / self.field_ramp_TeslaPers
+
     def open(self) -> None:
         resource_manager = pyvisa.ResourceManager(self.visalib)
         resources = resource_manager.list_resources()
@@ -163,6 +377,9 @@ class VisaMagnet:
 
         self._visa_clear()
         self._visa_init()
+
+    def prefix(self, msg) -> str:
+        return f"{self.name}: {msg}"
 
     def close(self) -> None:
         if self.visa_handle is not None:
@@ -197,21 +414,14 @@ class VisaMagnet:
         except pyvisa.VisaIOError:
             pass
 
-        # first_state_response = self.ask_raw("STATE?")
-        # assert (
-        #     first_state_response.strip() == "Hello."
-        # ), "After initializing the connection, the programmer returns Hello"
-
     def _visa_init(self) -> None:
         """
         Initialize everything.
         For example the units we are going to use.
         """
-        # self.ask_raw("IDN?")
+
         idn = self.ask_raw("*IDN?")
 
-        # self.ask_raw("COIL?", astype=float)
-        # self.ask_raw("STATE?", astype=AMI430State.from_visa)
         # Choose field units in Tesla and ramp units in seconds
         self.write_raw("CONF:FIELD:UNITS 1")
         self.write_raw("CONF:RAMP:RATE:UNITS 0")
@@ -236,86 +446,24 @@ class VisaMagnet:
         else:
             self.write_raw("CONF:PS 0")
 
-        # self.write_raw("CONF:FIELD:UNITS 1")
-        # self.write_raw("CONF:RAMP:RATE:UNITS 0")
-        # self.write_raw("CONF:COIL 0.0968054211035818")
-        # self.write_raw("CONF:CURR:LIMIT 61.98")
-        # self.write_raw("CONF:CURR:LIMIT 61.980000000000004")
-        # self.write_raw("CONF:IND 11")
-        # self.write_raw("CONF:STAB 0")
-        # self.write_raw("CONF:RAMP:RATE:SEG 1")
-        # self.write_raw("CONF:RAMP:RATE:FIELD 1,0.001,0")
-        # self.write_raw("CONF:PS 1")
-        # self.write_raw("CONF:PS:HTIME 30")
-        # self.write_raw("CONF:PS:CTIME 600")
-        # self.write_raw("CONF:PS:CURR 20.1")
-        # self.write_raw("CONF:PS:PSRR 10")
-
-        # print(visa_handle.query("*IDN?"))
-        # print(visa_handle.query("?FIELD:UNITS"))
-        # print(f"{self.name}: " + self.visa_handle.query("COIL?"))
-        # print(f"{self.name}: " + self.visa_handle.query("FIELD:MAG?"))
-        # print(f"{self.name}: " + self.visa_handle.query("STATE?"))
-        # print(f"{self.name}: " + self.visa_handle.query("?IDN"))
-
-    def ramping(self) -> None:
-        assert self.visa_state != AMI430State.RAMPING
-        self.write_raw("PAUSE")
-
-        if self.magnet.has_switchheater:
-            self.info("Persistent switch heating")
-            self.write_raw("PS 1") # Persistent switch heater ON (heat up)
-            counter = 0
-            while self.visa_state == AMI430State.HEATING_SWITCH:
-                time.sleep(4.0)
-                counter += 1
-                if counter > 200:
-                    # TODO(hans)
-                    raise Exception("Timeout")
-            assert self.visa_state == AMI430State.PAUSED
-
-        self.info("Field Ramp")
-        self.write_raw("CONF:RAMP:RATE:SEG 1")
-        self.write_raw(f"CONF:RAMP:RATE:FIELD 1,{self.field_ramp_TeslaPers:f},0")
-        self.write_raw(f"CONF:FIELD:TARG {self.field_setpoint_Tesla:f}")
-
-        self.write_raw("RAMP")
-
-    def switch_cooling(self) -> None:
-        assert self.visa_state == AMI430State.HOLDING
-
-        if not self.magnet.has_switchheater:
-            return
-
-        self.info("Persistent switch cooling")
-        self.write_raw("PS 0") # Persistent switch heater OFF (cool down)
-        counter = 0
-        while self.visa_state == AMI430State.COOLING_SWITCH:
-            time.sleep(4.0)
-            counter += 1
-            if counter > 800:
-                # TODO(hans)
-                raise Exception("Timeout")
-        assert self.visa_state == AMI430State.PAUSED
-
-        self.info("Current zeroing")
-        self.write_raw("ZERO")
-        counter = 0
-        while self.visa_state == AMI430State.ZEROING_CURRENT:
-            time.sleep(4.0)
-            counter += 1
-            if counter > 20:
-                # TODO(hans)
-                raise Exception("Timeout")
-        assert self.visa_state == AMI430State.AT_ZERO_CURRENT
-
-        # 2022-09-26 11:04:26,080 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ ask_raw ¦ 219 ¦ [y(AMI430)] Querying: STATE?
-        # 2022-09-26 11:04:26,193 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ ask_raw ¦ 221 ¦ [y(AMI430)] Response: 3
-        # 2022-09-26 11:04:26,194 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ write_raw ¦ 205 ¦ [y(AMI430)] Writing: PAUSE
-        # 2022-09-26 11:04:26,195 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ write_raw ¦ 205 ¦ [y(AMI430)] Writing: CONF:FIELD:TARG 0.01
-        # 2022-09-26 11:04:26,196 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ ask_raw ¦ 219 ¦ [y(AMI430)] Querying: PS:INST?
-        # 2022-09-26 11:04:26,439 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ ask_raw ¦ 221 ¦ [y(AMI430)] Response: 0
-        # 2022-09-26 11:04:26,440 ¦ qcodes.instrument.instrument_base.com.visa ¦ DEBUG ¦ visa ¦ write_raw ¦ 205 ¦ [y(AMI430)] Writing: RAMP
+    def wait_for_state(
+        self,
+        transition_state: AMI430State,
+        final_state: AMI430State,
+        max_timeout_s=10.0,
+        sleep_s=4.0,
+    ) -> None:
+        begin_s = time.time()
+        while True:
+            time.sleep(sleep_s)
+            visa_state = self.visa_state
+            if self.visa_state != transition_state:
+                break
+            duration_s = time.time() - begin_s
+            msg = f"Timeout after waiting for {max_timeout_s}s for {final_state.name}. Current state {visa_state.name}"
+            if duration_s > max_timeout_s:
+                raise Exception(msg)
+        assert self.visa_state == final_state
 
     @property
     def visa_field_T(self) -> float:
@@ -345,10 +493,15 @@ class VisaMagnet:
         Args:
             cmd: The command to send to the instrument.
         """
-        self.debug(f"Writing: {cmd}")
+        logger.debug(self.prefix(f"Writing: {cmd}"))
         self.visa_handle.write(cmd)
 
     def ask_raw(self, cmd: str, astype=None) -> Any:
+        response = self._ask_raw(cmd=cmd, astype=astype)
+        logger.debug(self.prefix(f"ask_raw: '{cmd}' -> {response!r}"))
+        return response
+
+    def _ask_raw(self, cmd: str, astype=None) -> Any:
         """
         Low-level interface to ``visa_handle.ask``.
 
@@ -358,13 +511,13 @@ class VisaMagnet:
         Returns:
             The instrument's response.
         """
-        self.debug(f"Querying: {cmd}")
+        # logger.debug(self.prefix(f"Querying: {cmd}"))
         response = self.visa_handle.query(cmd)
         if astype is None:
-            self.debug(f"Response: '{response}'")
+            # logger.debug(self.prefix(f"Response: '{response}'"))
             return response
         response_type = astype(response)
-        self.debug(f"Response: {repr(response_type)}")
+        # logger.debug(self.prefix(f"Response: {repr(response_type)}"))
         return response_type
 
     def debug(self, msg: str) -> None:
@@ -389,20 +542,23 @@ def main():
         visa_station.visa_magnet_y.ramping()
         visa_magnet = visa_station.visa_magnet_y
     if True:
-        visa_station.visa_magnet_z.field_setpoint_Tesla = 0.02
+        visa_station.holding_switchheater_on = True
+        visa_station.holding_current = True
+        visa_station.visa_magnet_y.field_setpoint_Tesla = 0.00
+        visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
+        visa_station.visa_magnet_z.field_setpoint_Tesla = 0.00
         visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
-        visa_station.visa_magnet_z.ramping()
-        visa_magnet = visa_station.visa_magnet_z
+        visa_station.start_ramping()
 
     while True:
-        if visa_magnet.visa_state == AMI430State.HOLDING:
+        if visa_station.get_labber_state() == LabberState.HOLDING:
             break
+        print(f"visa_station.get_labber_state {visa_station.get_labber_state().name}")
         print(
-            f"{visa_magnet.visa_state} {visa_magnet.visa_current_supply_A:0.6f}A {visa_magnet.visa_field_T:0.6f}T"
+            f"y={visa_station.visa_magnet_y.visa_field_T:0.3f}T z={visa_station.visa_magnet_z.visa_field_T:0.3f}T"
         )
+        visa_station.tick()
         time.sleep(4.0)
-
-    visa_magnet.switch_cooling()
 
 
 if __name__ == "__main__":
