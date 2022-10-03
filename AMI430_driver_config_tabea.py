@@ -15,7 +15,6 @@ def get_station():
     station = Station(
         name="Tabea",
         field_limit=field_limit,
-        use_visa_simulation = True,
         x_axis=Magnet(
             ip_address="169.254.47.78",
             current_limit_A=61.98,  # Ampere

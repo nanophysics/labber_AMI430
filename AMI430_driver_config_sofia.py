@@ -12,7 +12,7 @@ field_limit = (
 
 def get_station():
     station = Station(
-        name="Tabea",
+        name="Sofia",
         field_limit=field_limit,
         y_axis=Magnet(
             ip_address="TCPIP0::169.254.70.51::7180::SOCKET",
