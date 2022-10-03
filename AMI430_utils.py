@@ -46,6 +46,13 @@ class Magnet:
         assert self.has_switchheater
         return self.current_limit_A / self.persisten_current_rampe_rate_Apers
 
+    def consitency_check(self) -> None:
+        if self.has_switchheater:
+            assert isinstance(self.switchheater_heat_time_s, float)
+            assert isinstance(self.switchheater_cool_time_s, float)
+            assert isinstance(self.switchheater_current_A, float)
+            assert isinstance(self.persisten_current_rampe_rate_Apers, float)
+
 
 @dataclass(frozen=True)
 class Station:

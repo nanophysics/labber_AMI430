@@ -341,6 +341,8 @@ class VisaMagnet:
         self.field_setpoint_Tesla: float = 0.0
         self.field_ramp_TeslaPers: float = 0.0
 
+        magnet.consitency_check()
+
     @property
     def use_visa_simulation(self) -> bool:
         return self.visa_station.station.use_visa_simulation

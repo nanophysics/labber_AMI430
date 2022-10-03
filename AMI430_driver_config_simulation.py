@@ -14,7 +14,7 @@ def get_station():
     station = Station(
         name="Simulation",
         field_limit=field_limit,
-        use_visa_simulation = True,
+        use_visa_simulation=True,
         x_axis=Magnet(
             ip_address="GPIB::1::INSTR",
             current_limit_A=61.98,  # Ampere
@@ -23,6 +23,10 @@ def get_station():
             ramp_rate_initial_Apers=0.02,
             inductance_H=28.3,
             has_switchheater=True,
+            switchheater_heat_time_s=30.0,
+            switchheater_cool_time_s=600.0,
+            switchheater_current_A=20.1e-3,
+            persisten_current_rampe_rate_Apers=10.0,
         ),
         y_axis=Magnet(
             ip_address="GPIB::2::INSTR",
@@ -41,6 +45,6 @@ def get_station():
             ramp_rate_initial_Apers=0.02,
             inductance_H=28.3,
             has_switchheater=False,
-        )
+        ),
     )
     return station

@@ -5,7 +5,7 @@ import logging
 import InstrumentDriver  # pylint: disable=import-error
 
 import AMI430_driver_config
-import AMI430_driver_qcodes
+import AMI430_visa
 from AMI430_utils import Station
 
 logger = logging.getLogger("LabberDriver")
@@ -22,20 +22,21 @@ class Driver(InstrumentDriver.InstrumentWorker):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config: Station = None
-        self.driver: AMI430_driver_qcodes.DriverQCodes = None
+        self.station: Station = None
+        self.visa_station: AMI430_visa.VisaStation = None
 
     def performOpen(self, options={}):
         """Perform the operation of opening the instrument connection"""
 
         # Reset the usb connection (it must not change the applied voltages)
         self.log("AMI 430 Magnets Driver")
-        self.config = AMI430_driver_config.get_station()
-        self.qcodes = AMI430_driver_qcodes.DriverQCodes(station=self.config)
+        self.station = AMI430_driver_config.get_station()
+        self.visa_station = AMI430_visa.VisaStation(station=self.station)
+        self.visa_station.open()
 
     def performClose(self, bError=False, options={}):
         """Perform the close instrument connection operation"""
-        self.qcodes.close()
+        self.visa_station.close()
 
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation. This function should
@@ -66,9 +67,12 @@ class Driver(InstrumentDriver.InstrumentWorker):
         # only implmeneted for geophone voltage
         logger.debug(f"performGetValue({quant.name})")
         if quant.name == "Config / Name":
-            return self.config.name
+            return self.station.name
         if quant.name == "Config / Axis":
-            return self.config.axis.name
+            return self.station.axis.name
+        if quant.name == "Status / Labber State":
+            labber_state = self.visa_station.get_labber_state()
+            return labber_state.name
         return 42
         # if quant.name in LABBER_INTERNAL_QUANTITIES:
         #     return quant.getValue()
