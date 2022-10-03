@@ -80,13 +80,16 @@ class RampingStatemachineMagnet:
                 f"Magnet {self._visa_magnet.name}: Start ramping to {self._visa_magnet.field_setpoint_Tesla} T"
             )
         )
-        if (
-            abs(self._visa_magnet.field_setpoint_Tesla - self._visa_magnet.visa_field_T)
-            < 1e-6
-        ):
-            if self._visa_magnet.visa_state == AMI430State.HOLDING:
-                self._state == MagnetRampingState.DONE
-                return
+        if self._visa_magnet.field_set_Tesla is not None:
+            if (
+                abs(self._visa_magnet.field_setpoint_Tesla - self._visa_magnet.field_set_Tesla)
+                < 1e-12
+            ):
+                
+                if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                    logger.info(self.prefix("Field already at setpoint: Skip ramp"))
+                    self._state = MagnetRampingState.DONE
+                    return
 
         # self._visa_magnet.ensure_switch_on()
 
@@ -107,7 +110,7 @@ class RampingStatemachineMagnet:
         if state_before != state_after:
             logger.debug(
                 self.prefix(
-                    f"Magnet {self._visa_magnet.name}: {state_before.name} -> {state_after.name}, timeout {self._timeout - time.time():0.1f} s"
+                    f"{state_before.name} -> {state_after.name}, timeout {self._timeout - time.time():0.1f} s"
                 )
             )
 
@@ -168,6 +171,7 @@ class RampingStatemachineMagnet:
 
         if self._state == MagnetRampingState.WAITFOR_HOLDING:
             if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                self._visa_magnet.field_set_Tesla = self._visa_magnet.field_setpoint_Tesla
                 if not self.magnet.has_switchheater:
                     self._state = MagnetRampingState.DONE
                     return
@@ -338,7 +342,10 @@ class VisaMagnet:
         self.name = name
         self.visa_handle: pyvisa.resources.MessageBasedResource = None
 
+        self.field_set_Tesla: float = None
+        "This is the field which is currently set"
         self.field_setpoint_Tesla: float = 0.0
+        "This field should be set when calling ramp"
         self.field_ramp_TeslaPers: float = 0.0
 
         magnet.consitency_check()
@@ -361,8 +368,8 @@ class VisaMagnet:
         """
         if self.use_visa_simulation:
             return f"{FILENAME_VISA_SIM}@sim"
-        return "@ivi"
-        # return "@py"
+        # return "@ivi"
+        return "@py"
 
     @property
     def expected_ramp_duration_s(self) -> float:
@@ -543,25 +550,42 @@ def main():
         visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
         visa_station.visa_magnet_y.ramping()
         visa_magnet = visa_station.visa_magnet_y
-    if True:
-        visa_station.holding_switchheater_on = True
-        visa_station.holding_current = True
-        visa_station.visa_magnet_y.field_setpoint_Tesla = 0.00
-        visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
-        visa_station.visa_magnet_z.field_setpoint_Tesla = 0.00
-        visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
-        visa_station.start_ramping()
+
+    visa_station.holding_switchheater_on = True
+    visa_station.holding_current = True
+    visa_station.visa_magnet_y.field_setpoint_Tesla = 0.00
+    visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
+    visa_station.visa_magnet_z.field_setpoint_Tesla = 0.00
+    visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
+    t0 = time.time()
+    visa_station.start_ramping()
 
     while True:
         if visa_station.get_labber_state() == LabberState.HOLDING:
+            print('Elapsed time:', time.time()-t0)
             break
+            
         print(f"visa_station.get_labber_state {visa_station.get_labber_state().name}")
         print(
             f"y={visa_station.visa_magnet_y.visa_field_T:0.3f}T z={visa_station.visa_magnet_z.visa_field_T:0.3f}T"
         )
         visa_station.tick()
-        time.sleep(4.0)
+        time.sleep(1.0)
 
+    t0 = time.time()
+    visa_station.start_ramping()
+
+    while True:
+        if visa_station.get_labber_state() == LabberState.HOLDING:
+            print('Elapsed time:', time.time()-t0)
+            break
+            
+        print(f"visa_station.get_labber_state {visa_station.get_labber_state().name}")
+        print(
+            f"y={visa_station.visa_magnet_y.visa_field_T:0.3f}T z={visa_station.visa_magnet_z.visa_field_T:0.3f}T"
+        )
+        visa_station.tick()
+        time.sleep(1.0)
 
 if __name__ == "__main__":
     main()

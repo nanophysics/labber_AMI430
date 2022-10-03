@@ -25,8 +25,11 @@ class EnumMixin:
     @classmethod
     def from_visa(cls, value_text: str) -> enum.Enum:
         assert isinstance(value_text, str)
-        value = int(value_text)
-        err = f'Unkown "{value}". Expect one of {cls.all_text()}!'
+        err = f'Unkown "{value_text}". Expect one of {cls.all_text()}!'
+        try:
+            value = int(value_text)
+        except ValueError as e:
+            raise Exception(err) from e
         try:
             return cls(value)
         except KeyError as e:

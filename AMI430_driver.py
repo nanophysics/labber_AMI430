@@ -14,8 +14,10 @@ logging.basicConfig()
 logger.setLevel(logging.DEBUG)
 
 LABBER_INTERNAL_QUANTITIES = ("Expert",)
-MODEL_SIMULATION = "Simulation"
 
+assert sys.version_info.major == 3
+assert sys.version_info.minor == 7
+assert sys.version_info.micro == 9
 
 class Driver(InstrumentDriver.InstrumentWorker):
     """This class implements the AMI430 driver"""
