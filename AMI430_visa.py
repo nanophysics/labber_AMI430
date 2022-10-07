@@ -3,7 +3,7 @@ import pathlib
 import logging
 import time
 import enum
-from typing import Any, List
+from typing import Any, List, Optional
 from xmlrpc.client import Boolean
 
 import pyvisa
@@ -20,14 +20,16 @@ assert FILENAME_VISA_SIM.exists()
 
 _VISA_TERMINATOR = "\n"
 
+
 class SwitchHeaterState(EnumMixin, enum.IntEnum):
     OFF = 0
     ON = 1
-    
+
     # @classmethod
     # def from_text(cls, vlaue: str) -> int:
     #     'Function to translate txt to number'
     #     return SwitchHeaterState.te
+
 
 class AMI430State(EnumMixin, enum.IntEnum):
     RAMPING = 1
@@ -41,8 +43,6 @@ class AMI430State(EnumMixin, enum.IntEnum):
     HEATING_SWITCH = 9
     COOLING_SWITCH = 10
 
-
-    
     @property
     def labber_state(self) -> "LabberState":
         return {
@@ -94,10 +94,13 @@ class RampingStatemachineMagnet:
         )
         if self._visa_magnet.field_set_Tesla is not None:
             if (
-                abs(self._visa_magnet.field_setpoint_Tesla - self._visa_magnet.field_set_Tesla)
+                abs(
+                    self._visa_magnet.field_setpoint_Tesla
+                    - self._visa_magnet.field_set_Tesla
+                )
                 < 1e-12
             ):
-                
+
                 if self._visa_magnet.visa_state == AMI430State.HOLDING:
                     logger.info(self.prefix("Field already at setpoint: Skip ramp"))
                     self._state = MagnetRampingState.DONE
@@ -114,6 +117,10 @@ class RampingStatemachineMagnet:
     @property
     def magnet(self) -> "Magnet":
         return self._visa_magnet.magnet
+
+    @property
+    def statetext(self) -> str:
+        return f"{self._visa_magnet.name}-{self._state.name}"
 
     def tick(self):
         state_before = self._state
@@ -183,7 +190,9 @@ class RampingStatemachineMagnet:
 
         if self._state == MagnetRampingState.WAITFOR_HOLDING:
             if self._visa_magnet.visa_state == AMI430State.HOLDING:
-                self._visa_magnet.field_set_Tesla = self._visa_magnet.field_setpoint_Tesla
+                self._visa_magnet.field_set_Tesla = (
+                    self._visa_magnet.field_setpoint_Tesla
+                )
                 if not self.magnet.has_switchheater:
                     self._state = MagnetRampingState.DONE
                     return
@@ -242,13 +251,16 @@ class RampingStatemachineStation:
 
     def __init__(self, visa_station: "VisaStation"):
         self._visa_station = visa_station
-        self._magnets_to_be_ramped: List[RampingStatemachineMagnet] = []
+        self._magnets_to_be_ramped: List[VisaMagnet] = []
+        self._current_magnet: Optional[RampingStatemachineMagnet] = None
+        self.done = True
+
+    def start_ramping(self):
         "List of magnets waiting for there field to be ramped."
         self.done = False
 
-        self._current_magnet: RampingStatemachineMagnet = None
         tmp_magnets = []
-        for visa_magnet in visa_station.visa_magnets:
+        for visa_magnet in self._visa_station.visa_magnets:
             current_field_T = visa_magnet.visa_field_T
             set_field_T = visa_magnet.field_setpoint_Tesla
             increment_T = set_field_T - current_field_T
@@ -257,6 +269,13 @@ class RampingStatemachineStation:
         tmp_magnets.sort()
         for _, visa_magnet in tmp_magnets:
             self._magnets_to_be_ramped.append(visa_magnet)
+
+    @property
+    def statetext(self) -> str:
+        states = [visa_magnet.name for visa_magnet in self._magnets_to_be_ramped]
+        if self._current_magnet is not None:
+            states.insert(0, self._current_magnet.statetext)
+        return ",".join(states)
 
     def tick(self):
         "process next step"
@@ -289,7 +308,9 @@ class VisaStation:
         self.visa_magnet_x: "VisaMagnet" = None
         self.visa_magnet_y: "VisaMagnet" = None
         self.visa_magnet_z: "VisaMagnet" = None
-        self._state_machine: RampingStatemachineStation = None
+        self._state_machine: RampingStatemachineStation = RampingStatemachineStation(
+            visa_station=self
+        )
 
     @property
     def visa_magnets(self) -> List["VisaMagnet"]:
@@ -303,9 +324,14 @@ class VisaStation:
             if visa_magnet is not None
         ]
 
+    @property
+    def statetext(self) -> str:
+        return self._state_machine.statetext
+
     def get_labber_state(self) -> LabberState:
-        if self._state_machine is not None:
+        if not self._state_machine.done:
             return LabberState.MISALIGNED
+
         states = {magnet.visa_state for magnet in self.visa_magnets}
         if len(states) > 1:
             logger.info(f"LabberState.MISALIGNED: {states}")
@@ -316,17 +342,21 @@ class VisaStation:
         return state.labber_state
 
     def start_ramping(self) -> None:
-        self._state_machine = RampingStatemachineStation(visa_station=self)
+        self._state_machine.start_ramping()
 
     def tick(self) -> None:
-        if self._state_machine is None:
-            return
+        textstate_before = self.statetext
 
-        if self._state_machine.done:
-            self._state_machine = None
-            return
-
-        self._state_machine.tick()
+        while True:
+            self._state_machine.tick()
+            textstate_after = self.statetext
+            if textstate_before == textstate_after:
+                # logger.debug(f"Slowlane textstate_after={textstate_after}")
+                break
+            logger.debug(
+                f"Fastlane textstate_before={textstate_before} -> textstate_after={textstate_after}"
+            )
+            textstate_before = textstate_after
 
     def open(self) -> None:
         def add_magnet(magnet: Magnet, name: str):
@@ -386,7 +416,7 @@ class VisaMagnet:
     @property
     def expected_ramp_duration_s(self) -> float:
         return self.field_setpoint_Tesla / self.field_ramp_TeslaPers
-    
+
     @property
     def switchheater_state(self) -> int:
         assert self.magnet.has_switchheater
@@ -395,10 +425,8 @@ class VisaMagnet:
     @switchheater_state.setter
     def switchheater_state(self, state: str) -> None:
         assert self.magnet.has_switchheater
-        
+
         self.write_raw(f"PS {SwitchHeaterState[state].value}")
-
-
 
     def open(self) -> None:
         resource_manager = pyvisa.ResourceManager(self.visalib)
@@ -489,6 +517,8 @@ class VisaMagnet:
     ) -> None:
         begin_s = time.time()
         while True:
+            print(f"wait_for_state SLEEP {sleep_s}")
+
             time.sleep(sleep_s)
             visa_state = self.visa_state
             if self.visa_state != transition_state:
@@ -587,9 +617,9 @@ def main():
 
     while True:
         if visa_station.get_labber_state() == LabberState.HOLDING:
-            print('Elapsed time:', time.time()-t0)
+            print("Elapsed time:", time.time() - t0)
             break
-            
+
         print(f"visa_station.get_labber_state {visa_station.get_labber_state().name}")
         print(
             f"y={visa_station.visa_magnet_y.visa_field_T:0.3f}T z={visa_station.visa_magnet_z.visa_field_T:0.3f}T"
@@ -601,16 +631,22 @@ def main():
     visa_station.start_ramping()
 
     while True:
+        visa_station.tick()
+        print(" Labber State", visa_station.get_labber_state())
         if visa_station.get_labber_state() == LabberState.HOLDING:
-            print('Elapsed time:', time.time()-t0)
+            print(
+                "****************************************************************Elapsed time:",
+                time.time() - t0,
+            )
             break
-            
+
         print(f"visa_station.get_labber_state {visa_station.get_labber_state().name}")
         print(
             f"y={visa_station.visa_magnet_y.visa_field_T:0.3f}T z={visa_station.visa_magnet_z.visa_field_T:0.3f}T"
         )
-        visa_station.tick()
+        print(" SLEEP")
         time.sleep(1.0)
+
 
 if __name__ == "__main__":
     main()
