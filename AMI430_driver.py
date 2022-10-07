@@ -4,9 +4,10 @@ import logging
 
 import InstrumentDriver  # pylint: disable=import-error
 
-import AMI430_driver_config
 import AMI430_visa
 from AMI430_utils import Station
+import AMI430_driver_config
+import AMI430_thread
 
 logger = logging.getLogger("LabberDriver")
 
@@ -19,26 +20,34 @@ assert sys.version_info.major == 3
 assert sys.version_info.minor == 7
 assert sys.version_info.micro == 9
 
+
 class Driver(InstrumentDriver.InstrumentWorker):
     """This class implements the AMI430 driver"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.station: Station = None
-        self.visa_station: AMI430_visa.VisaStation = None
+        self._labber_thread: AMI430_thread.VisaThread = None
 
     def performOpen(self, options={}):
         """Perform the operation of opening the instrument connection"""
 
         # Reset the usb connection (it must not change the applied voltages)
         self.log("AMI 430 Magnets Driver")
-        self.station = AMI430_driver_config.get_station()
-        self.visa_station = AMI430_visa.VisaStation(station=self.station)
-        self.visa_station.open()
+        station = AMI430_driver_config.get_station()
+        self._labber_thread = AMI430_thread.VisaThread(station=station)
+        self._labber_thread.open()
+
+    @property
+    def station(self) -> Station:
+        return self._labber_thread.station
+
+    @property
+    def visa_station(self) -> AMI430_visa.VisaStation:
+        return self._labber_thread.visa_station
 
     def performClose(self, bError=False, options={}):
         """Perform the close instrument connection operation"""
-        self.visa_station.close()
+        self._labber_thread.close()
 
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation. This function should
@@ -87,7 +96,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
         if quant.name == "Config / Axis":
             return self.station.axis.name
         if quant.name == "Status / Labber State":
-            labber_state = self.visa_station.get_labber_state()
+            labber_state = self._labber_thread.get_labber_state()
             return labber_state.name
         if quant.name == 'Control / Switchheater Status Z':
             return self.visa_station.visa_magnet_z.switchheater_state

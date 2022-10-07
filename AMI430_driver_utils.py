@@ -3,6 +3,8 @@ import logging
 
 logger = logging.getLogger("LabberDriver")
 
+class DriverAbortException(Exception):
+    pass
 
 class EnumMixin:
     def eq(self, other):
@@ -51,7 +53,7 @@ class EnumLogging(EnumMixin, enum.Enum):
         logger.setLevel(level)
 
 
-class QuantityOBSOLETE(EnumMixin, enum.Enum):
+class Quantity(EnumMixin, enum.Enum):
     """
     Readable name => value as in 'heater_thermometrie_2021.ini'
     """
