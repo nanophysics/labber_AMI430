@@ -45,14 +45,15 @@ class Driver(InstrumentDriver.InstrumentWorker):
         return the actual value set by the instrument"""
         # keep track of multiple calls, to set multiple voltages efficiently
         value_new = value
+
         if quant.name == "Control / Field target":
             self.control_field_target = value
             value_new = list([v + 1 for v in value])
             logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
 
-        if quant.name == 'Control / Switchheater Status Z':
-            self.visa_station.visa_magnet_z.switchheater_state = value
-            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+        # if quant.name == 'Control / Switchheater Status Z':
+        #     self.visa_station.visa_magnet_z.switchheater_state = value
+        #     logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
 
         if quant.name == 'Control / Hold Switchheater on Z':
             self.visa_station.holding_switchheater_on = value
@@ -61,6 +62,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
         if quant.name == 'Control / Hold Current Z':
             self.visa_station.holding_current = value 
             logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+
         return value_new
         # if quant.name in LABBER_INTERNAL_QUANTITIES:
         #     return value

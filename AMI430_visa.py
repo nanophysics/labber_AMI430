@@ -1,10 +1,8 @@
-from ctypes.wintypes import BOOLEAN
 import pathlib
 import logging
 import time
 import enum
-from typing import Any, List, Optional
-from xmlrpc.client import Boolean
+from typing import Any, Set, List, Optional
 
 import pyvisa
 import pyvisa.resources
@@ -21,9 +19,9 @@ assert FILENAME_VISA_SIM.exists()
 _VISA_TERMINATOR = "\n"
 
 
-class SwitchHeaterState(EnumMixin, enum.IntEnum):
-    OFF = 0
-    ON = 1
+# class SwitchHeaterState(EnumMixin, enum.IntEnum):
+#     OFF = 0
+#     ON = 1
 
     # @classmethod
     # def from_text(cls, vlaue: str) -> int:
@@ -61,14 +59,15 @@ class LabberState(EnumMixin, enum.IntEnum):
     IDLE = 4
     MISALIGNED = 6
     ERROR = 7
+    OFF = 8
 
     @classmethod
-    def valid_set_by_labber(cls) -> List["LabberState"]:
-        return [cls.RAMPING, cls.PAUSED]
+    def valid_set_by_labber(cls) -> Set["LabberState"]:
+        return {cls.RAMPING, cls.PAUSED,cls.OFF}
 
-    @classmethod
-    def valid_set_by_magnet(cls) -> List["LabberState"]:
-        return [cls.HOLDING, cls.IDLE]
+    # @classmethod
+    # def valid_set_by_magnet(cls) -> List["LabberState"]:
+    #     return [cls.HOLDING, cls.IDLE]
 
 
 class MagnetRampingState(enum.IntEnum):
@@ -422,11 +421,11 @@ class VisaMagnet:
         assert self.magnet.has_switchheater
         return self.ask_raw("PS?", astype=int)
 
-    @switchheater_state.setter
-    def switchheater_state(self, state: str) -> None:
-        assert self.magnet.has_switchheater
+    # @switchheater_state.setter
+    # def switchheater_state(self, state: str) -> None:
+    #     assert self.magnet.has_switchheater
 
-        self.write_raw(f"PS {SwitchHeaterState[state].value}")
+        # self.write_raw(f"PS {SwitchHeaterState[state].value}")
 
     def open(self) -> None:
         resource_manager = pyvisa.ResourceManager(self.visalib)
