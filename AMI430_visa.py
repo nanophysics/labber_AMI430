@@ -1,8 +1,10 @@
+from ctypes.wintypes import BOOLEAN
 import pathlib
 import logging
 import time
 import enum
 from typing import Any, List
+from xmlrpc.client import Boolean
 
 import pyvisa
 import pyvisa.resources
@@ -18,6 +20,14 @@ assert FILENAME_VISA_SIM.exists()
 
 _VISA_TERMINATOR = "\n"
 
+class SwitchHeaterState(EnumMixin, enum.IntEnum):
+    OFF = 0
+    ON = 1
+    
+    # @classmethod
+    # def from_text(cls, vlaue: str) -> int:
+    #     'Function to translate txt to number'
+    #     return SwitchHeaterState.te
 
 class AMI430State(EnumMixin, enum.IntEnum):
     RAMPING = 1
@@ -31,6 +41,8 @@ class AMI430State(EnumMixin, enum.IntEnum):
     HEATING_SWITCH = 9
     COOLING_SWITCH = 10
 
+
+    
     @property
     def labber_state(self) -> "LabberState":
         return {
@@ -374,6 +386,19 @@ class VisaMagnet:
     @property
     def expected_ramp_duration_s(self) -> float:
         return self.field_setpoint_Tesla / self.field_ramp_TeslaPers
+    
+    @property
+    def switchheater_state(self) -> int:
+        assert self.magnet.has_switchheater
+        return self.ask_raw("PS?", astype=int)
+
+    @switchheater_state.setter
+    def switchheater_state(self, state: str) -> None:
+        assert self.magnet.has_switchheater
+        
+        self.write_raw(f"PS {SwitchHeaterState[state].value}")
+
+
 
     def open(self) -> None:
         resource_manager = pyvisa.ResourceManager(self.visalib)

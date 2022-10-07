@@ -49,6 +49,18 @@ class Driver(InstrumentDriver.InstrumentWorker):
             self.control_field_target = value
             value_new = list([v + 1 for v in value])
             logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+
+        if quant.name == 'Control / Switchheater Status Z':
+            self.visa_station.visa_magnet_z.switchheater_state = value
+            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+
+        if quant.name == 'Control / Hold Switchheater on Z':
+            self.visa_station.holding_switchheater_on = value
+            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+
+        if quant.name == 'Control / Hold Current Z':
+            self.visa_station.holding_current = value 
+            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
         return value_new
         # if quant.name in LABBER_INTERNAL_QUANTITIES:
         #     return value
@@ -75,6 +87,12 @@ class Driver(InstrumentDriver.InstrumentWorker):
         if quant.name == "Status / Labber State":
             labber_state = self.visa_station.get_labber_state()
             return labber_state.name
+        if quant.name == 'Control / Switchheater Status Z':
+            return self.visa_station.visa_magnet_z.switchheater_state
+        if quant.name == 'Control / Hold Switchheater on Z':
+            return self.visa_station.holding_switchheater_on
+        if quant.name == 'Control / Hold Current Z':
+            return self.visa_station.holding_current
         return 42
         # if quant.name in LABBER_INTERNAL_QUANTITIES:
         #     return quant.getValue()
