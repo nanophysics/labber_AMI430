@@ -1,6 +1,7 @@
 # pylint: disable=dangerous-default-value
 import sys
 import logging
+from AMI430_driver_utils import Quantity
 
 import InstrumentDriver  # pylint: disable=import-error
 
@@ -14,7 +15,6 @@ logger = logging.getLogger("LabberDriver")
 logging.basicConfig()
 logger.setLevel(logging.DEBUG)
 
-LABBER_INTERNAL_QUANTITIES = ("Expert",)
 
 assert sys.version_info.major == 3
 assert sys.version_info.minor == 7
@@ -26,7 +26,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._labber_thread: AMI430_thread.VisaThread = None
+        self._thread: AMI430_thread.VisaThread = None
 
     def performOpen(self, options={}):
         """Perform the operation of opening the instrument connection"""
@@ -34,53 +34,46 @@ class Driver(InstrumentDriver.InstrumentWorker):
         # Reset the usb connection (it must not change the applied voltages)
         self.log("AMI 430 Magnets Driver")
         station = AMI430_driver_config.get_station()
-        self._labber_thread = AMI430_thread.VisaThread(station=station)
-        self._labber_thread.open()
+        self._thread = AMI430_thread.VisaThread(station=station)
 
     @property
     def station(self) -> Station:
-        return self._labber_thread.station
+        return self._thread.station
 
     @property
     def visa_station(self) -> AMI430_visa.VisaStation:
-        return self._labber_thread.visa_station
+        return self._thread.visa_station
 
     def performClose(self, bError=False, options={}):
         """Perform the close instrument connection operation"""
-        self._labber_thread.close()
+        self._thread.stop()
 
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation. This function should
         return the actual value set by the instrument"""
         # keep track of multiple calls, to set multiple voltages efficiently
+
+        if self.isFirstCall(options):
+            logger.info(f"********** FIRST CALL {quant.name} {value}: {options}")
+
         value_new = value
 
-        if quant.name == "Control / Field target":
-            self.control_field_target = value
-            value_new = list([v + 1 for v in value])
-            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+        try:
+            quantity = Quantity(quant.name)
+            value_new = self._thread.set_quantity_sync(quantity=quantity, value=value)
 
-        # if quant.name == 'Control / Switchheater Status Z':
-        #     self.visa_station.visa_magnet_z.switchheater_state = value
-        #     logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+            if self.isFinalCall(options):
+                logger.info(f"********** FINAL CALL {quant.name} {value}: {options}")
+                self._thread.wait_till_ramped_sync()
+                logger.info(f"********** FINAL CALL DONE {quant.name} {value}: {options}")
 
-        if quant.name == 'Control / Hold Switchheater on Z':
-            self.visa_station.holding_switchheater_on = value
-            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
+            return value_new
+        except:
+            print(" ???", quant.name, value)
+            pass
 
-        if quant.name == 'Control / Hold Current Z':
-            self.visa_station.holding_current = value 
-            logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
-
-        return value_new
-        # if quant.name in LABBER_INTERNAL_QUANTITIES:
-        #     return value
-        # try:
-        #     value_new = self.ht.set_value(name=quant.name, value=value)
-        #     logger.debug(f"performSetValue('{quant.name}', '{value}') -> '{value_new}'")
-        #     return value_new
-        # except QuantityNotFoundException as e:
-        #     logger.exception(e)
+        logger.error(f"performSetValue: Unknown quantity '{quant.name}' {value}")
+        # if quant.name == "Control / Field target":
         #     raise
 
     def checkIfSweeping(self, quant):
@@ -91,26 +84,15 @@ class Driver(InstrumentDriver.InstrumentWorker):
         """Perform the Get Value instrument operation"""
         # only implmeneted for geophone voltage
         logger.debug(f"performGetValue({quant.name})")
-        if quant.name == "Config / Name":
-            return self.station.name
-        if quant.name == "Config / Axis":
-            return self.station.axis.name
-        if quant.name == "Status / Labber State":
-            labber_state = self._labber_thread.get_labber_state()
-            return labber_state.name
-        if quant.name == 'Control / Switchheater Status Z':
-            return self.visa_station.visa_magnet_z.switchheater_state
-        if quant.name == 'Control / Hold Switchheater on Z':
-            return self.visa_station.holding_switchheater_on
-        if quant.name == 'Control / Hold Current Z':
-            return self.visa_station.holding_current
-        return 42
-        # if quant.name in LABBER_INTERNAL_QUANTITIES:
-        #     return quant.getValue()
-        # try:
-        #     value = self.ht.get_value(name=quant.name)
-        #     logger.debug(f"performGetValue({quant.name}) -> '{value}'")
-        #     return value
-        # except QuantityNotFoundException as e:
-        #     logger.exception(e)
-        #     raise
+
+        try:
+            quantity = Quantity(quant.name)
+            value = self._thread.get_quantity_sync(quantity=quantity)
+            return value
+        except:
+            print(" ???", quant.name, value)
+            pass
+
+        logger.error(f"performGetValue: Unknown quantity '{quant.name}'")
+
+

@@ -57,43 +57,23 @@ class Quantity(EnumMixin, enum.Enum):
     """
     Readable name => value as in 'heater_thermometrie_2021.ini'
     """
-
-    ControlWriteHeating = "Control Heating / Mode"
-    ControlWriteExpert = "Expert"
-    ControlWriteLogging = "Control Mode / Logging"
-    ControlWriteThermometrie = "Control Heating / Thermometrie"
-    ControlWriteGreenLED = "Green LED"
-    ControlWritePower_W = "Control Heating / set power (mode manual)"
-    ControlWriteTemperature_K = "Control Heating / set temperature (mode controlled)"
-    ControlWriteTemperatureAndSettle_K = (
-        "Control Heating / set temperature and settle (mode controlled)"
-    )
-    ControlWriteTemperatureToleranceBand_K = (
-        "Control Heating / temperature tolerance band (plus minus)"
-    )
-    ControlWriteSettleTime_S = "Control Heating / settle time (mode controlled)"
-    ControlWriteTimeoutTime_S = "Control Heating / timeout time (mode controlled)"
-    StatusReadTemperatureBox_C = "Temperature HeaterBox / Temperature_C"
-    StatusReadSerialNumberHeater = "Status Heater / Serial Number Heater"
-    StatusReadSerialNumberInsertHidden = "SerialNumberInsertHidden"
-    StatusReadSerialNumberInsert = "Status Heater / Serial Number Insert"
-    StatusReadDefrostSwitchOnBox = "Status Heater / Defrost - Switch on box"
-    StatusReadDefrostUserInteraction = "Status Heater / Defrost - User interaction"
-    StatusReadInsertConnected = "Status Insert / Insert Connected"
-    StatusReadErrorCounter = "Status Heater / Error counter"
-    StatusReadSettled = "Status Heater / Settled (expert)"
-    TemperatureReadonlyResistanceCarbon_OHM = (
-        "Temperature Resistance / Carbon_Ohm (expert)"
-    )
-    TemperatureReadonlyResistancePT1000_OHM = (
-        "Temperature Resistance / PT1000_Ohm (expert)"
-    )
-    TemperatureReadonlyTemperatureCarbon_K = (
-        "Temperature Temperature / Carbon_K (expert)"
-    )
-    TemperatureReadonlyTemperaturePT1000_K = (
-        "Temperature Temperature / PT1000_K (expert)"
-    )
-    TemperatureReadonlyTemperatureCalibrated_K = (
-        "Temperature Temperature / Temperature_K"
-    )
+    ControlLogging = "Control / Logging"
+    ControlLabberState = "Control / Labber State"
+    ControlHoldCurrent = "Control / Hold Current Z"
+    ControlHoldSwitchheaterOn = "Control / Hold Switchheater on Z"
+    ControlRampRateZ = "Control / Ramp Rate Z"
+    ControlRampRateX = "Control / Ramp Rate X"
+    ControlRampRateY = "Control / Ramp Rate Y"
+    ControlSetpointX = "Control / Field Setpoint X"
+    ControlSetpointY = "Control / Field Setpoint Y"
+    ControlSetpointZ = "Control / Field Setpoint Z"
+    StatusSwitchheaterStatus = "Status / Switchheater Status Z"
+    StatusFieldActualX = "Status / Field actual X"
+    StatusFieldActualY = "Status / Field actual Y"
+    StatusFieldActualZ = "Status / Field actual Z"
+    StatusMagnetStateX = "Status / Magnet State X"
+    StatusMagnetStateY = "Status / Magnet State Y"
+    StatusMagnetStateZ = "Status / Magnet State Z"
+    ConfigName =  "Config / Name"
+    ConfigAxis = "Config / Axis"
+        

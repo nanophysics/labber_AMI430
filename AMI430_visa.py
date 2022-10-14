@@ -1,5 +1,7 @@
+from decimal import DivisionByZero
 import pathlib
 import logging
+from re import L
 import time
 import enum
 from typing import Any, Set, List, Optional
@@ -8,7 +10,8 @@ import pyvisa
 import pyvisa.resources
 
 from AMI430_utils import Station, Magnet, Axis
-from AMI430_driver_utils import EnumMixin
+from AMI430_driver_utils import EnumLogging, EnumMixin
+from AMI430_driver_utils import Quantity
 
 logger = logging.getLogger("LabberDriver")
 
@@ -23,10 +26,10 @@ _VISA_TERMINATOR = "\n"
 #     OFF = 0
 #     ON = 1
 
-    # @classmethod
-    # def from_text(cls, vlaue: str) -> int:
-    #     'Function to translate txt to number'
-    #     return SwitchHeaterState.te
+# @classmethod
+# def from_text(cls, vlaue: str) -> int:
+#     'Function to translate txt to number'
+#     return SwitchHeaterState.te
 
 
 class AMI430State(EnumMixin, enum.IntEnum):
@@ -53,17 +56,18 @@ class AMI430State(EnumMixin, enum.IntEnum):
 
 
 class LabberState(EnumMixin, enum.IntEnum):
+    # ATTENTION: The int values must corrspond with combo_def_1
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
     IDLE = 4
-    MISALIGNED = 6
-    ERROR = 7
-    OFF = 8
+    MISALIGNED = 5
+    ERROR = 6
+    # OFF = 8
 
     @classmethod
     def valid_set_by_labber(cls) -> Set["LabberState"]:
-        return {cls.RAMPING, cls.PAUSED,cls.OFF}
+        return {cls.RAMPING, cls.PAUSED, cls.OFF}
 
     # @classmethod
     # def valid_set_by_magnet(cls) -> List["LabberState"]:
@@ -91,11 +95,11 @@ class RampingStatemachineMagnet:
                 f"Magnet {self._visa_magnet.name}: Start ramping to {self._visa_magnet.field_setpoint_Tesla} T"
             )
         )
-        if self._visa_magnet.field_set_Tesla is not None:
+        if self._visa_magnet.field_actual_Tesla is not None:
             if (
                 abs(
                     self._visa_magnet.field_setpoint_Tesla
-                    - self._visa_magnet.field_set_Tesla
+                    - self._visa_magnet.field_actual_Tesla
                 )
                 < 1e-12
             ):
@@ -189,7 +193,7 @@ class RampingStatemachineMagnet:
 
         if self._state == MagnetRampingState.WAITFOR_HOLDING:
             if self._visa_magnet.visa_state == AMI430State.HOLDING:
-                self._visa_magnet.field_set_Tesla = (
+                self._visa_magnet.field_actual_Tesla = (
                     self._visa_magnet.field_setpoint_Tesla
                 )
                 if not self.magnet.has_switchheater:
@@ -298,6 +302,8 @@ class RampingStatemachineStation:
 
 class VisaStation:
     def __init__(self, station: Station):
+        self._logging = EnumLogging.DEBUG
+
         self.holding_switchheater_on: bool = True
         "Only relavant for the magnet with switchheader"
         self.holding_current = True
@@ -375,6 +381,153 @@ class VisaStation:
         for visa_magnet in self.visa_magnets:
             visa_magnet.close()
 
+    def set_quantity(self, quantity: Quantity, value):
+        try:
+            visa_magnet = self.quantity_setpoint_field[quantity]
+            assert isinstance(value, float)
+            if visa_magnet:
+                visa_magnet.field_setpoint_Tesla = value
+            return value
+        except KeyError:
+            pass
+        try:
+            visa_magnet = self.quantity_setpoint_ramp[quantity]
+            assert isinstance(value, float)
+            if visa_magnet:
+                visa_magnet.field_ramp_TeslaPers = value
+            return value
+        except KeyError:
+            pass
+        if quantity == Quantity.ControlLogging:
+            self._logging = EnumLogging.get_exception(value)
+            return value
+        if quantity == Quantity.StatusSwitchheaterStatus:
+            # TODO
+            v_dict = {"ON": True, "OFF": False}
+            # return self.switchheater_status = v_dict[value]
+            return value
+        if quantity == Quantity.ControlHoldSwitchheaterOn:
+            v_dict = {"True": True, "False": False}
+            self.holding_switchheater_on = v_dict[value]
+            return value
+        if quantity == Quantity.ControlHoldCurrent:
+            v_dict = {"True": True, "False": False}
+            self.holding_current = v_dict[value]
+            return value
+        if quantity == Quantity.ControlLabberState:
+
+            if isinstance(value, float):
+                # The measurement windows seems to send a float, but a text of the state was expected...
+                value_float = value
+                value = LabberState(int(value_float) + 1).name
+                logger.info(
+                    f"Hack: Converted {Quantity.ControlLabberState.name} {value_float} -> {value}"
+                )
+
+            def action():
+                if value == LabberState.RAMPING.name:
+                    self.start_ramping()
+                    return
+
+    
+                logger.warning(
+                    f"set_quantity: quantity={quantity.name}: can not set state {value}"
+                )
+
+            action()
+            return self.get_labber_state().name
+        logger.warning(f"set_quantity: Unknown quantity '{quantity.name}' {value}")
+        return 43
+
+    def wait_till_ramped(self):
+        if not self.measure_flag:
+            return
+        self.start_ramping()
+        start_s = time.time()
+        while True:
+            self.tick()
+            labber_state = self.get_labber_state()
+            if labber_state == LabberState.HOLDING:
+                break
+            if not labber_state in (LabberState.RAMPING, LabberState.MISALIGNED):
+                logger.warning(f"Unexected labber state '{labber_state.name}'")
+            time.sleep(1.0)
+            logger.info(f"RAMPING WAIT: {time.time()-start_s:0.3}s")
+
+    @property
+    def switchheater_state(self) -> int:
+        visa_magnet = self.visa_magnet_z
+        if visa_magnet is None:
+            return 0
+        return visa_magnet.switchheater_state
+
+    def get_quantity(self, quantity: Quantity) -> Any:
+        assert isinstance(quantity, Quantity)
+        if quantity == Quantity.ConfigName:
+            return self.station.name
+        if quantity == Quantity.ConfigAxis:
+            return self.station.axis.name
+        if quantity == Quantity.ControlLogging:
+            return self._logging.value
+        if quantity == Quantity.StatusSwitchheaterStatus:
+            return self.switchheater_state
+        if quantity == Quantity.ControlHoldSwitchheaterOn:
+            return self.holding_switchheater_on
+        if quantity == Quantity.ControlHoldCurrent:
+            return self.holding_current
+        if quantity == Quantity.ControlLabberState:
+            return self.get_labber_state().name
+
+        try:
+            return self.quantity_setpoint_field[quantity].field_setpoint_Tesla
+        except KeyError:
+            pass
+        try:
+            return self.quantity_setpoint_ramp[quantity].field_ramp_TeslaPers
+        except KeyError:
+            pass
+        try:
+            return self.quantity_magnet_state[quantity].visa_state.name
+        except KeyError:
+            pass
+        try:
+            return self.quantity_magnet_field_actual[quantity].visa_field_T
+        except KeyError:
+            pass
+        logger.warning(f"get_quantity: Unknown quantity '{quantity.name}'")
+
+    @property
+    def quantity_setpoint_ramp(self):
+        return {
+            Quantity.ControlRampRateX: self.visa_magnet_x,
+            Quantity.ControlRampRateY: self.visa_magnet_y,
+            Quantity.ControlRampRateZ: self.visa_magnet_z,
+        }
+
+    @property
+    def quantity_setpoint_field(self):
+        return {
+            Quantity.ControlSetpointX: self.visa_magnet_x,
+            Quantity.ControlSetpointY: self.visa_magnet_y,
+            Quantity.ControlSetpointZ: self.visa_magnet_z,
+        }
+
+    @property
+    def quantity_magnet_state(self):
+        return {
+            Quantity.StatusMagnetStateX: self.visa_magnet_x,
+            Quantity.StatusMagnetStateY: self.visa_magnet_y,
+            Quantity.StatusMagnetStateZ: self.visa_magnet_z,
+        }
+
+    @property
+    def quantity_magnet_field_actual(self):
+        return {
+            Quantity.StatusFieldActualX: self.visa_magnet_x,
+            Quantity.StatusFieldActualY: self.visa_magnet_y,
+            Quantity.StatusFieldActualZ: self.visa_magnet_z,
+        }
+
 
 class VisaMagnet:
     def __init__(self, visa_station: VisaStation, magnet: Magnet, name: str):
@@ -383,7 +536,7 @@ class VisaMagnet:
         self.name = name
         self.visa_handle: pyvisa.resources.MessageBasedResource = None
 
-        self.field_set_Tesla: float = None
+        self.field_actual_Tesla: float = None
         "This is the field which is currently set"
         self.field_setpoint_Tesla: float = 0.0
         "This field should be set when calling ramp"
@@ -414,7 +567,10 @@ class VisaMagnet:
 
     @property
     def expected_ramp_duration_s(self) -> float:
-        return self.field_setpoint_Tesla / self.field_ramp_TeslaPers
+        try:
+            return self.field_setpoint_Tesla / self.field_ramp_TeslaPers
+        except (ZeroDivisionError, DivisionByZero):
+            return 2 * 60 * 60
 
     @property
     def switchheater_state(self) -> int:
@@ -425,7 +581,7 @@ class VisaMagnet:
     # def switchheater_state(self, state: str) -> None:
     #     assert self.magnet.has_switchheater
 
-        # self.write_raw(f"PS {SwitchHeaterState[state].value}")
+    # self.write_raw(f"PS {SwitchHeaterState[state].value}")
 
     def open(self) -> None:
         resource_manager = pyvisa.ResourceManager(self.visalib)

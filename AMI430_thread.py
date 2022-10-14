@@ -39,14 +39,16 @@ class VisaThread(threading.Thread):
      - Synchronized access
        The two threads agree, that before accessing data, the 'LOCK' has to be aquired.
        This is implement using @synchronized.
+       Convention: The Labber GUI ONLY accesses methods with '_synq' in its name.
     """
 
     def __init__(self, station: Station):
         self.dict_values_labber_thread_copy = {}
         super().__init__(daemon=True)
         self._visa_station = AMI430_visa.VisaStation(station=station)
-        logger.info(f"LabberThread(config='{self._visa_station.name}')")
+        logger.info(f"LabberThread(config='{self.station.name}')")
         self._stopping = False
+        self._visa_station.open()
         self.start()
 
     @property
@@ -74,8 +76,9 @@ class VisaThread(threading.Thread):
             elapsed_s = time.time() - start_s
             if elapsed_s > TICK_INTERVAL_S:
                 logger.warning(
-                    f"tick() took:{elapsed_s:0.3f}s. Exected <= {TICK_INTERVAL_S:0.3f}s"
+                    f"tick() took:{elapsed_s:0.3f}s. Expected <= {TICK_INTERVAL_S:0.3f}s"
                 )
+            time.sleep(TICK_INTERVAL_S)
 
     def stop(self):
         self._stopping = True
@@ -88,7 +91,7 @@ class VisaThread(threading.Thread):
         """
         self._visa_station.tick()
         # Create a copy of all values to allow access for the labber thread without any delay.
-        self.dict_values_labber_thread_copy = self._visa_station.dict_values.copy()
+        # self.dict_values_labber_thread_copy = self._visa_station.dict_values.copy()
 
     @synchronized
     def set_quantity_sync(self, quantity: Quantity, value):
@@ -96,6 +99,10 @@ class VisaThread(threading.Thread):
         Called by labber GUI
         """
         return self._visa_station.set_quantity(quantity=quantity, value=value)
+
+    @synchronized
+    def wait_till_ramped_sync(self):
+        self._visa_station.wait_till_ramped()
 
     def set_value(self, name: str, value):
         """
