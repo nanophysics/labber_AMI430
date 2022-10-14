@@ -27,6 +27,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._thread: AMI430_thread.VisaThread = None
+        self._ramping_required = True
 
     def performOpen(self, options={}):
         """Perform the operation of opening the instrument connection"""
@@ -52,7 +53,6 @@ class Driver(InstrumentDriver.InstrumentWorker):
         """Perform the Set Value instrument operation. This function should
         return the actual value set by the instrument"""
         # keep track of multiple calls, to set multiple voltages efficiently
-
         if self.isFirstCall(options):
             logger.info(f"********** FIRST CALL {quant.name} {value}: {options}")
 
@@ -61,11 +61,26 @@ class Driver(InstrumentDriver.InstrumentWorker):
         try:
             quantity = Quantity(quant.name)
             value_new = self._thread.set_quantity_sync(quantity=quantity, value=value)
+            if quantity in (
+                Quantity.ControlSetpointX,
+                Quantity.ControlSetpointY,
+                Quantity.ControlSetpointZ,
+                Quantity.ControlHoldCurrent,
+                Quantity.ControlHoldSwitchheaterOn,
+            ):
+                self._ramping_required = True
 
             if self.isFinalCall(options):
-                logger.info(f"********** FINAL CALL {quant.name} {value}: {options}")
-                self._thread.wait_till_ramped_sync()
-                logger.info(f"********** FINAL CALL DONE {quant.name} {value}: {options}")
+                if self.visa_station._mode == AMI430_visa.ControlMode.RAMPING_WAIT:
+                    if self._ramping_required:
+                        self._ramping_required = False
+                        logger.info(
+                            f"********** FINAL CALL {quant.name} {value}: {options}"
+                        )
+                        self._thread.wait_till_ramped_sync()
+                        logger.info(
+                            f"********** FINAL CALL DONE {quant.name} {value}: {options}"
+                        )
 
             return value_new
         except:
@@ -94,5 +109,3 @@ class Driver(InstrumentDriver.InstrumentWorker):
             pass
 
         logger.error(f"performGetValue: Unknown quantity '{quant.name}'")
-
-

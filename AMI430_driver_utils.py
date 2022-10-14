@@ -3,8 +3,10 @@ import logging
 
 logger = logging.getLogger("LabberDriver")
 
+
 class DriverAbortException(Exception):
     pass
+
 
 class EnumMixin:
     def eq(self, other):
@@ -57,8 +59,10 @@ class Quantity(EnumMixin, enum.Enum):
     """
     Readable name => value as in 'heater_thermometrie_2021.ini'
     """
+
     ControlLogging = "Control / Logging"
     ControlLabberState = "Control / Labber State"
+    ControlMode = "Control / Mode"
     ControlHoldCurrent = "Control / Hold Current Z"
     ControlHoldSwitchheaterOn = "Control / Hold Switchheater on Z"
     ControlRampRateZ = "Control / Ramp Rate Z"
@@ -74,6 +78,5 @@ class Quantity(EnumMixin, enum.Enum):
     StatusMagnetStateX = "Status / Magnet State X"
     StatusMagnetStateY = "Status / Magnet State Y"
     StatusMagnetStateZ = "Status / Magnet State Z"
-    ConfigName =  "Config / Name"
+    ConfigName = "Config / Name"
     ConfigAxis = "Config / Axis"
-        

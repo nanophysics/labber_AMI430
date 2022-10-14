@@ -56,7 +56,6 @@ class AMI430State(EnumMixin, enum.IntEnum):
 
 
 class LabberState(EnumMixin, enum.IntEnum):
-    # ATTENTION: The int values must corrspond with combo_def_1
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
@@ -72,6 +71,11 @@ class LabberState(EnumMixin, enum.IntEnum):
     # @classmethod
     # def valid_set_by_magnet(cls) -> List["LabberState"]:
     #     return [cls.HOLDING, cls.IDLE]
+
+
+class ControlMode(EnumMixin, enum.IntEnum):
+    PASSIVE = 1
+    RAMPING_WAIT = 2
 
 
 class MagnetRampingState(enum.IntEnum):
@@ -316,6 +320,7 @@ class VisaStation:
         self._state_machine: RampingStatemachineStation = RampingStatemachineStation(
             visa_station=self
         )
+        self._mode: ControlMode = ControlMode.PASSIVE
 
     @property
     def visa_magnets(self) -> List["VisaMagnet"]:
@@ -401,6 +406,9 @@ class VisaStation:
         if quantity == Quantity.ControlLogging:
             self._logging = EnumLogging.get_exception(value)
             return value
+        if quantity == Quantity.ControlMode:
+            self._mode = ControlMode.get_exception(value)
+            return value
         if quantity == Quantity.StatusSwitchheaterStatus:
             # TODO
             v_dict = {"ON": True, "OFF": False}
@@ -416,20 +424,19 @@ class VisaStation:
             return value
         if quantity == Quantity.ControlLabberState:
 
-            if isinstance(value, float):
-                # The measurement windows seems to send a float, but a text of the state was expected...
-                value_float = value
-                value = LabberState(int(value_float) + 1).name
-                logger.info(
-                    f"Hack: Converted {Quantity.ControlLabberState.name} {value_float} -> {value}"
-                )
+            # if isinstance(value, float):
+            #     # The measurement windows seems to send a float, but a text of the state was expected...
+            #     value_float = value
+            #     value = LabberState(int(value_float) + 1).name
+            #     logger.info(
+            #         f"Hack: Converted {Quantity.ControlLabberState.name} {value_float} -> {value}"
+            #     )
 
             def action():
                 if value == LabberState.RAMPING.name:
                     self.start_ramping()
                     return
 
-    
                 logger.warning(
                     f"set_quantity: quantity={quantity.name}: can not set state {value}"
                 )
@@ -440,8 +447,6 @@ class VisaStation:
         return 43
 
     def wait_till_ramped(self):
-        if not self.measure_flag:
-            return
         self.start_ramping()
         start_s = time.time()
         while True:
@@ -452,7 +457,7 @@ class VisaStation:
             if not labber_state in (LabberState.RAMPING, LabberState.MISALIGNED):
                 logger.warning(f"Unexected labber state '{labber_state.name}'")
             time.sleep(1.0)
-            logger.info(f"RAMPING WAIT: {time.time()-start_s:0.3}s")
+            logger.info(f"RAMPING WAIT: {time.time()-start_s:0.3}s {self.statetext}")
 
     @property
     def switchheater_state(self) -> int:
@@ -477,7 +482,8 @@ class VisaStation:
             return self.holding_current
         if quantity == Quantity.ControlLabberState:
             return self.get_labber_state().name
-
+        if quantity == Quantity.ControlMode:
+            return self._mode.value
         try:
             return self.quantity_setpoint_field[quantity].field_setpoint_Tesla
         except KeyError:
@@ -536,7 +542,7 @@ class VisaMagnet:
         self.name = name
         self.visa_handle: pyvisa.resources.MessageBasedResource = None
 
-        self.field_actual_Tesla: float = None
+        self.field_actual_Tesla: float = None 
         "This is the field which is currently set"
         self.field_setpoint_Tesla: float = 0.0
         "This field should be set when calling ramp"
