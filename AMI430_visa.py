@@ -1,11 +1,10 @@
 from decimal import DivisionByZero
 import pathlib
 import logging
-from re import L
 import time
 import enum
 from typing import Any, Set, List, Optional
-
+from AMI430_logparser import LoggerTags
 import pyvisa
 import pyvisa.resources
 
@@ -86,7 +85,6 @@ class MagnetRampingState(enum.IntEnum):
     WAITFOR_SWITCH_COLD = 5
     WAITFOR_ZERO_CURRENT = 6
     DONE = 7
-
 
 class RampingStatemachineMagnet:
     def __init__(self, visa_magnet: "VisaMagnet"):
@@ -321,6 +319,16 @@ class VisaStation:
             visa_station=self
         )
         self._mode: ControlMode = ControlMode.PASSIVE
+        self.init_logger()
+
+    def init_logger(self) -> None:
+        fh = logging.FileHandler('tmp_AMI430.log')
+        fh.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+
 
     @property
     def visa_magnets(self) -> List["VisaMagnet"]:
@@ -387,6 +395,10 @@ class VisaStation:
             visa_magnet.close()
 
     def set_quantity(self, quantity: Quantity, value):
+        value_new = self._set_quantity(quantity, value)
+        logger.info(f'{LoggerTags.LABBER_SET.name} {quantity.name} {value} {value_new}')
+        return value_new
+    def _set_quantity(self, quantity: Quantity, value):
         try:
             visa_magnet = self.quantity_setpoint_field[quantity]
             assert isinstance(value, float)
@@ -456,8 +468,13 @@ class VisaStation:
                 break
             if not labber_state in (LabberState.RAMPING, LabberState.MISALIGNED):
                 logger.warning(f"Unexected labber state '{labber_state.name}'")
-            time.sleep(1.0)
+            logger.info(f"{LoggerTags.LABBER_STATE.name} {labber_state.name}")
+            logger.info(f"{LoggerTags.RAMPING_DURATION_S.name} {time.time()-start_s:0.3} {self.statetext}")
+            for magnet in self.visa_magnets:
+                magnet.visa_field_T
+
             logger.info(f"RAMPING WAIT: {time.time()-start_s:0.3}s {self.statetext}")
+            time.sleep(1.0)
 
     @property
     def switchheater_state(self) -> int:
@@ -692,11 +709,13 @@ class VisaMagnet:
 
     @property
     def visa_field_T(self) -> float:
-        return self.ask_raw("FIELD:MAG?", astype=float)
+        field_T =  self.ask_raw("FIELD:MAG?", astype=float)
+        logger.info(f'{LoggerTags.MAGNET_FIELD.name} {self.name} {field_T}')
+        return field_T
 
     @property
     def visa_current_magnet_A(self) -> float:
-        return self.ask_raw("CURR:MAG?", astype=float)
+        return  self.ask_raw("CURR:MAG?", astype=float)
 
     @property
     def visa_current_supply_A(self) -> float:
@@ -704,8 +723,9 @@ class VisaMagnet:
 
     @property
     def visa_state(self) -> AMI430State:
-        return self.ask_raw("STATE?", astype=AMI430State.from_visa)
-
+        state = self.ask_raw("STATE?", astype=AMI430State.from_visa)
+        logger.info(f'{LoggerTags.MAGNET_STATE.name} {self.name} {state.name} {state.value}')
+        return state 
     @property
     def visa_error(self) -> AMI430State:
         # TODO: What will be returned?
@@ -769,13 +789,19 @@ def main():
 
     visa_station.holding_switchheater_on = True
     visa_station.holding_current = True
+    visa_station.visa_magnet_y.field_setpoint_Tesla = 0.02
+    visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
+    visa_station.visa_magnet_z.field_setpoint_Tesla = 0.00
+    visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
+    visa_station.wait_till_ramped()
     visa_station.visa_magnet_y.field_setpoint_Tesla = 0.00
     visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
     visa_station.visa_magnet_z.field_setpoint_Tesla = 0.00
     visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
+    visa_station.wait_till_ramped()
+    return 
     t0 = time.time()
     visa_station.start_ramping()
-
     while True:
         if visa_station.get_labber_state() == LabberState.HOLDING:
             print("Elapsed time:", time.time() - t0)
