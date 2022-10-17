@@ -4,7 +4,7 @@ import logging
 import time
 import enum
 from typing import Any, Set, List, Optional
-from AMI430_logparser import LoggerTags
+import os
 import pyvisa
 import pyvisa.resources
 
@@ -20,7 +20,15 @@ assert FILENAME_VISA_SIM.exists()
 
 _VISA_TERMINATOR = "\n"
 
-
+class LoggerTags(EnumMixin, enum.IntEnum):
+    MAGNET_FIELD = enum.auto()
+    MAGNET_STATE = enum.auto()
+    LABBER_STATE = enum.auto()
+    AMI430State = enum.auto()
+    MAGNET_RAMPING_STATE = enum.auto()
+    LABBER_SET = enum.auto()
+    STATION_RAMPING_STATE = enum.auto()
+    RAMPING_DURATION_S = enum.auto()
 # class SwitchHeaterState(EnumMixin, enum.IntEnum):
 #     OFF = 0
 #     ON = 1
@@ -141,7 +149,7 @@ class RampingStatemachineMagnet:
     def _tick(self):
         def start_ramping():
             self._visa_magnet.write_raw("PAUSE")
-
+            self._visa_magnet.visa_state
             logger.info(self.prefix("Field Ramp"))
             # self._visa_magnet.write_raw("CONF:RAMP:RATE:SEG 1")
             self._visa_magnet.write_raw(
@@ -215,7 +223,7 @@ class RampingStatemachineMagnet:
             return
 
         if self._state == MagnetRampingState.WAITFOR_SWITCH_COLD:
-            if self._visa_magnet.visa_state == AMI430State.HOLDING:
+            if self._visa_magnet.visa_state == AMI430State.PAUSED: #changed to PAUSED from HOLDING
                 if self._visa_magnet.visa_station.holding_current:
                     self._state = MagnetRampingState.DONE
                     return
@@ -322,7 +330,9 @@ class VisaStation:
         self.init_logger()
 
     def init_logger(self) -> None:
-        fh = logging.FileHandler('tmp_AMI430.log')
+        pth = os.path.normpath(r'C:\Users\measure\Labber\Drivers\labber_AMI430')
+        pth = os.path.join(pth,'tmp_AMI430.log')
+        fh = logging.FileHandler(pth)
         fh.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
         fh.setFormatter(formatter)
@@ -464,12 +474,12 @@ class VisaStation:
         while True:
             self.tick()
             labber_state = self.get_labber_state()
+            logger.info(f"{LoggerTags.LABBER_STATE.name} {labber_state.name}")
+            logger.info(f"{LoggerTags.RAMPING_DURATION_S.name} {time.time()-start_s:0.3} {self.statetext}")
             if labber_state == LabberState.HOLDING:
                 break
             if not labber_state in (LabberState.RAMPING, LabberState.MISALIGNED):
                 logger.warning(f"Unexected labber state '{labber_state.name}'")
-            logger.info(f"{LoggerTags.LABBER_STATE.name} {labber_state.name}")
-            logger.info(f"{LoggerTags.RAMPING_DURATION_S.name} {time.time()-start_s:0.3} {self.statetext}")
             for magnet in self.visa_magnets:
                 magnet.visa_field_T
 

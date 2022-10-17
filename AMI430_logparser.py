@@ -1,4 +1,5 @@
 from multiprocessing.sharedctypes import Value
+from AMI430_visa import LabberState
 import re
 import time
 import pathlib
@@ -6,18 +7,11 @@ from typing import List
 from dataclasses import dataclass, field
 import enum 
 from AMI430_driver_utils import EnumLogging, EnumMixin
-
+from AMI430_visa import LoggerTags, LabberState
+import datetime as dt
 re_line = re.compile(r"^(?P<time_stamp>\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) ((?P<severity>[A-Z]+) (?P<tag>[A-Za-z0-9_]+) (?P<msg>.*)|(?P<msg_without_tag>.*))$")
 
-class LoggerTags(EnumMixin, enum.IntEnum):
-    MAGNET_FIELD = enum.auto()
-    MAGNET_STATE = enum.auto()
-    LABBER_STATE = enum.auto()
-    AMI430State = enum.auto()
-    MAGNET_RAMPING_STATE = enum.auto()
-    LABBER_SET = enum.auto()
-    STATION_RAMPING_STATE = enum.auto()
-    RAMPING_DURATION_S = enum.auto()
+
 
 
 @dataclass
@@ -41,11 +35,13 @@ class Log:
 class DataframeBase:
     name: str
     logger_tag : LoggerTags
-    time_stamp: List[str] = field(default_factory=list)
+    time_stamp: List[dt.datetime] = field(default_factory=list)
     value : List[float] = field(default_factory=list)
     label : List[str] = field(default_factory=list)
 
     def pick2(self, log : Log) -> None: 
+        if log.match_line == None:
+            return
         if log.tag != self.logger_tag.name:
             return
         # try:
@@ -56,7 +52,18 @@ class DataframeBase:
         #     return
         self.pick(log)
     def pick(self, log: Log) -> None:
+        if log.tag == LoggerTags.LABBER_STATE.name:
+            self.convert_append_datetime(log.time_stamp)
+            state_str = log.msg
+            self.value.append(LabberState[state_str].value)
+            self.label.append(state_str)
+            return
+        
         raise Exception('Needs to be overwritten')
+    def convert_append_datetime(self,string : str) -> None:
+        date = dt.datetime.strptime(string,'%Y-%m-%d %H:%M:%S,%f')
+        self.time_stamp.append(date)
+        return
 
 @dataclass
 class DataFrameMagnetField(DataframeBase):
@@ -68,7 +75,7 @@ class DataFrameMagnetField(DataframeBase):
         if magnet != self.magnet:
             return
         field_T = float(field_str_T)
-        self.time_stamp.append(log.time_stamp)
+        self.convert_append_datetime(log.time_stamp)
         self.value.append(field_T)
 
 
@@ -78,11 +85,12 @@ class DataFrameMagnetState(DataframeBase):
 
     def pick(self, log: Log) -> None:
         # MAGNET_STATE Y PAUSED 1
+
         magnet, state_str, state_val = log.msg.split(" ")
         if magnet != self.magnet:
             return
         state_val = int(state_val)
-        self.time_stamp.append(log.time_stamp)
+        self.convert_append_datetime(log.time_stamp)
         self.value.append(state_val)
         self.label.append(state_str)
 
@@ -93,19 +101,20 @@ def parse_file(filename: pathlib.Path):
         match_line = re_line.match(line)
         yield Log(lineno0+1, match_line)
 
-def main(filename):
+# def main(filename):
      
-    dataframes = (
-        # DataFrameMagnetField("Magnet Field", magnet="Z"),
-        DataFrameMagnetField("Magnet Field",logger_tag=LoggerTags.MAGNET_FIELD, magnet="Y"),
-        DataFrameMagnetState("Magnet State",logger_tag=LoggerTags.MAGNET_STATE, magnet="Y"),
-    #     DataFrameMagnetState("Magnet State", magnet="Y"),
-    )
-    for log in parse_file(filename):
-        for dataframe in dataframes:
-            dataframe.pick2(log)
+    # dataframes = (
+    #     # DataFrameMagnetField("Magnet Field", magnet="Z"),
+    #     # DataFrameMagnetField("Magnet Field",logger_tag=LoggerTags.MAGNET_FIELD, magnet="Y"),
+    #     DataframeBase("Labber State", logger_tag=LoggerTags.LABBER_STATE),
+    # #     DataFrameMagnetState("Magnet State", magnet="Y"),
+    # )
+    # for log in parse_file(filename):
+    #     for dataframe in dataframes:
+    #         dataframe.pick2(log)
 
-    for dataframe in dataframes:
-        print(dataframe)
+    # for dataframe in dataframes:
+    #     print(dataframe)
+        
 
-main(pathlib.Path('tmp_AMI430.log'))
+# main(pathlib.Path('tmp_AMI430.log'))
