@@ -18,7 +18,6 @@ class Magnet:
     current_limit_A: float
     field_limit_T: float
     ramp_rate_limit_Apers: float
-    ramp_rate_limit_Apers: float
     ramp_rate_initial_Apers: float
     inductance_H: float
     """
@@ -36,6 +35,10 @@ class Magnet:
         return self.field_limit_T / self.current_limit_A
 
     @property
+    def max_rampr_rate_Tpers(self) -> float:
+        return self.coil_constant_TperA * self.ramp_rate_limit_Apers
+
+    @property
     def stability_parameter(self) -> float:
         if self.has_switchheater:
             return 0.0
@@ -46,7 +49,7 @@ class Magnet:
         assert self.has_switchheater
         return self.current_limit_A / self.persisten_current_rampe_rate_Apers
 
-    def consitency_check(self) -> None:
+    def consistency_check(self) -> None:
         if self.has_switchheater:
             assert isinstance(self.switchheater_heat_time_s, float)
             assert isinstance(self.switchheater_cool_time_s, float)
