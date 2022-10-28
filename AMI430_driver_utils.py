@@ -27,6 +27,23 @@ class EnumMixin:
             raise Exception(err) from e
 
     @classmethod
+    def get_valuelabber_exception(cls, value: int):
+        if isinstance(value, str):
+            # Labber sent us a string. For example Control / Mode "PASSIVE"
+            return cls.get_exception(value)
+
+        # Labber sent us a string. For example Control / Mode 1.0
+        if isinstance(value, float):
+            value = int(value)
+
+        assert isinstance(value, int)
+        err = f'Unkown "{value}". Expect one of {cls.all_text()}!'
+        try:
+            return cls(value)
+        except KeyError as e:
+            raise Exception(err) from e
+
+    @classmethod
     def from_visa(cls, value_text: str) -> enum.Enum:
         assert isinstance(value_text, str)
         err = f'Unkown "{value_text}". Expect one of {cls.all_text()}!'

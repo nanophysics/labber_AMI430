@@ -1,12 +1,13 @@
-from logging import Logger
 import matplotlib.pyplot as plt
 import pathlib
 from AMI430_logparser import *
 from AMI430_visa import *
 import matplotlib
+import numpy as np
+from matplotlib.patches import Rectangle
 
 matplotlib.rcParams["backend"] = "Qt5Agg"
-from datetime import datetime
+from datetime import datetime, timedelta
 from matplotlib.widgets import MultiCursor
 
 
@@ -18,7 +19,7 @@ class Plotter:
 
     def _parse_logfile_to_dataframes(self):
         for log in parse_file(filename):
-            for dataframe in dataframes:
+            for dataframe in self.dataframes:
                 dataframe.pick2(log)
 
     def _axis_labeling(self, ax: plt.axes, logger_tag: LoggerTags) -> None:
@@ -47,7 +48,37 @@ class Plotter:
                     ax.plot(dataframe.time_stamp, dataframe.value)
                     return
                 ax.plot(dataframe.time_stamp, dataframe.value, label=dataframe.magnet)
+                ax.legend()
         return
+
+    def plot_timewindow(self, dates: List[DateTime], fig: plt.figure) -> None:
+
+        for ax in fig.get_axes():
+            ax.set_xlim(dates)
+        return
+
+    def highlight_state(self, fig: plt.figure, logger_tag: LoggerTags, state) -> None:
+        for dataframe in self.dataframes:
+            if dataframe.logger_tag == logger_tag:
+                axes = fig.get_axes()
+                for ax in axes:
+                    whr_idxlist = np.where(np.array(dataframe.value) == state.value)
+                    whr_time_stamps = np.array(dataframe.time_stamp)[whr_idxlist]
+
+                    ax.scatter(whr_time_stamps, np.ones_like(whr_time_stamps) * 10)
+                    for element in whr_time_stamps:
+                        ax.add_patch(
+                            Rectangle(
+                                (element - timedelta(seconds=1), 0),
+                                timedelta(seconds=2),
+                                10,
+                                alpha=0.2,
+                            )
+                        )
+        return
+
+    def highlight_field_value(self) -> None:
+        pass
 
     def _update_plot(self) -> None:
         pass
@@ -59,11 +90,18 @@ class Plotter:
         pass
 
 
-filename = pathlib.Path("tmp_AMI430.log")
+filename = pathlib.Path("tmp_AMI430_Sofia.log")
 
+# def dfMagnetField(magnet?str> str) DataFrame
+#  DataFrameMagnetField(
+#         "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Y"
+#     )
 
 dataframes = (
-    # DataFrameMagnetField("Magnet Field", magnet="Z"),
+    # dfMagnetField(@x@),
+    DataFrameMagnetField(
+        "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Z"
+    ),
     DataFrameMagnetField(
         "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Y"
     ),
@@ -77,18 +115,27 @@ dataframes = (
         "Magnet State", logger_tag=LoggerTags.MAGNET_STATE, magnet="Z"
     ),
     DataframeBase("Labber State", logger_tag=LoggerTags.LABBER_STATE),
+    # DataFrameSetpoint('Setpoint', logger_tag = LoggerTags.LABBER_SET, magnet = 'Z'),
 )
 
 
-fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+def main():
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
 
-plotter = Plotter(dataframes, filename)
-plotter.plot(LoggerTags.MAGNET_FIELD, ax1)
-plotter.plot(LoggerTags.MAGNET_STATE, ax2)
-plotter.plot(LoggerTags.LABBER_STATE, ax3)
-multi = MultiCursor(fig.canvas, (ax1, ax2, ax3), color="r", lw=1)
-plt.show()
+    plotter = Plotter(dataframes, filename)
+    plotter.plot(LoggerTags.MAGNET_FIELD, ax1)
+    plotter.plot(LoggerTags.MAGNET_STATE, ax2)
+    # plotter.plot(LoggerTags.MAGNET_STATE, ax2)
+    plotter.plot(LoggerTags.LABBER_STATE, ax3)
+    multi = MultiCursor(fig.canvas, (ax1, ax2, ax3), color="r", lw=1)
+    # dates = [datetime(2022, 10, 24, 0, 0, 0), datetime(2022, 10, 24, 23, 0, 0)]
+    # plotter.plot_timewindow(dates, fig)
+    plotter.highlight_state(fig, LoggerTags.LABBER_STATE, state=LabberState.HOLDING)
+    plt.show()
 
+
+if __name__ == "__main__":
+    main()
 
 # def refresh(ax1, ax2, ax3):
 #     # we need a clear dataframe function

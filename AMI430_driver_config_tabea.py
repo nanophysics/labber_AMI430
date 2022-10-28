@@ -14,7 +14,7 @@ field_limit = (
 def get_station():
     station = Station(
         name="Tabea",
-        field_limit=field_limit,
+        validate_field_limit=field_limit,
         x_axis=Magnet(
             ip_address="169.254.47.78",
             current_limit_A=61.98,  # Ampere
@@ -36,6 +36,6 @@ def get_station():
             ramp_rate_initial_Apers=0.02,
             inductance_H=28.3,
             has_switchheater=False,
-        )
+        ),
     )
     return station

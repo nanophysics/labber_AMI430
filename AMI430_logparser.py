@@ -101,6 +101,22 @@ def parse_file(filename: pathlib.Path):
         match_line = re_line.match(line)
         yield Log(lineno0+1, match_line)
 
+@dataclass 
+class DataFrameSetpoint(DataframeBase):
+    magnet: str = None
+
+    def pick(self, log: Log) -> None:
+        quantity, value, value_new = log.msg.split(" ",3)
+        quantity_base = quantity[:-1]
+        magnet = quantity[-1]
+        if quantity_base == 'ControlSetpoint':
+            if magnet != self.magnet:
+                return 
+            self.convert_append_datetime(log.time_stamp)
+            self.value.append(value)
+        return
+        #2022-10-24 10:42:42,610 INFO LABBER_SET ControlSetpointX 0.0 0.0
+
 # def main(filename):
      
     # dataframes = (

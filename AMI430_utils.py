@@ -3,6 +3,15 @@ from typing import Callable, Optional
 import enum
 
 
+class FieldLimitViolation(Exception):
+    pass
+
+
+def check_smaller_than(value: float, limit: float, msg: str) -> None:
+    if value > limit:
+        raise FieldLimitViolation(f"{value} > {limit}: {msg}")
+
+
 class Axis(enum.IntEnum):
     AXIS2 = 2
     AXIS3 = 3
@@ -60,7 +69,7 @@ class Magnet:
 @dataclass(frozen=True)
 class Station:
     name: str
-    field_limit: Callable
+    validate_field_limit: Callable
     z_axis: Magnet
     y_axis: Magnet
     x_axis: Optional[Magnet] = None

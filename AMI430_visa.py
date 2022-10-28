@@ -22,7 +22,7 @@ assert FILENAME_VISA_SIM.exists()
 _VISA_TERMINATOR = "\n"
 
 
-class LoggerTags(EnumMixin, enum.IntEnum):
+class LoggerTags(EnumMixin, enum.Enum):
     MAGNET_FIELD = enum.auto()
     MAGNET_STATE = enum.auto()
     LABBER_STATE = enum.auto()
@@ -52,7 +52,7 @@ class LoggerTags(EnumMixin, enum.IntEnum):
 #     return SwitchHeaterState.te
 
 
-class AMI430State(EnumMixin, enum.IntEnum):
+class AMI430State(EnumMixin, enum.Enum):
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
@@ -75,7 +75,7 @@ class AMI430State(EnumMixin, enum.IntEnum):
         }.get(self, LabberState.ERROR)
 
 
-class LabberState(EnumMixin, enum.IntEnum):
+class LabberState(EnumMixin, enum.Enum):
     RAMPING = 1
     HOLDING = 2
     PAUSED = 3
@@ -93,12 +93,14 @@ class LabberState(EnumMixin, enum.IntEnum):
     #     return [cls.HOLDING, cls.IDLE]
 
 
-class ControlMode(EnumMixin, enum.IntEnum):
-    PASSIVE = 1
-    RAMPING_WAIT = 2
+class ControlMode(EnumMixin, enum.Enum):
+    # ATTENTION: These values HAVE TO correspond with the
+    # values in AMI430_driver.ini, but -1
+    PASSIVE = 0
+    RAMPING_WAIT = 1
 
 
-class MagnetRampingState(enum.IntEnum):
+class MagnetRampingState(enum.Enum):
     INIT = 1
     WAITFOR_CURRENT = 2
     WAITFOR_SWITCH_WARM = 3
@@ -402,9 +404,18 @@ class VisaStation:
     def get_labber_state(self) -> LabberState:
         if not self._state_machine.done:
             return LabberState.MISALIGNED
-        if self._state_machine.done:
-            return LabberState.HOLDING
-        states = {magnet.visa_state for magnet in self.visa_magnets}
+
+        def fix_state(visa_magnet: VisaMagnet) -> AMI430State:
+            if visa_magnet.magnet.has_switchheater:
+                if not visa_magnet.visa_station.holding_switchheater_on:
+                    if visa_magnet.visa_state is AMI430State.PAUSED:
+                        return AMI430State.HOLDING
+                if not visa_magnet.visa_station.holding_current:
+                    if visa_magnet.visa_state is AMI430State.AT_ZERO_CURRENT:
+                        return AMI430State.HOLDING
+            return visa_magnet.visa_state
+
+        states = {fix_state(magnet) for magnet in self.visa_magnets}
         if len(states) > 1:
             logger.info(f"LabberState.MISALIGNED: {states}")
             return LabberState.MISALIGNED
@@ -430,13 +441,14 @@ class VisaStation:
             )
             textstate_before = textstate_after
 
-    def open(self) -> None:
+    def open(self, initialize_visa=True) -> None:
         def add_magnet(magnet: Magnet, name: str):
             assert magnet is not None
             assert isinstance(magnet, Magnet)
             assert isinstance(name, str)
             visa_magnet = VisaMagnet(visa_station=self, magnet=magnet, name=name)
-            visa_magnet.open()
+            if initialize_visa:
+                visa_magnet.open()
             return visa_magnet
 
         if self.station.axis == Axis.AXIS3:
@@ -448,72 +460,36 @@ class VisaStation:
         for visa_magnet in self.visa_magnets:
             visa_magnet.close()
 
-    @property
-    def setpoint_quantity_translator(self):
-        return {
-            Quantity.ControlSetpointX: "X",
-            Quantity.ControlSetpointY: "Y",
-            Quantity.ControlSetpointZ: "Z",
-        }
-
-    def _check_field_limit(self, quantity, value):
-        translated_quant = self.setpoint_quantity_translator[quantity]
-        setpoints = {
-            "X": self.visa_magnet_x.field_setpoint_Tesla,
-            "Y": self.visa_magnet_y.field_setpoint_Tesla,
-            "Z": self.visa_magnet_z.field_setpoint_Tesla,
-        }
-        setpoints[translated_quant] = value
-        setpoint_values = [setpoints["X"], setpoints["Y"], setpoints["Z"]]
-        answer = any(
-            [
-                limit_function(*setpoint_values)
-                for limit_function in self.station.field_limit
-            ]
-        )
-        return answer
-        pass
-
     def set_quantity(self, quantity: Quantity, value):
         value_new = self._set_quantity(quantity, value)
         logger.info(f"{LoggerTags.LABBER_SET.name} {quantity.name} {value} {value_new}")
         return value_new
 
-    def _ramp_rate_ok(self, visa_magnet: "VisaMagnet", value) -> Boolean:
-        if value <= visa_magnet.magnet.max_rampr_rate_Tpers:
-            return True
-        return False
-
     def _set_quantity(self, quantity: Quantity, value):
         visa_magnet = self.quantity_setpoint_field.get(quantity, None)
         if visa_magnet is not None:
             assert isinstance(value, float)
-            if visa_magnet:
-                if self._check_field_limit(quantity, value):
-                    visa_magnet.field_setpoint_Tesla = value
-                    return value
-                else:
-                    raise Exception(
-                        "The value is not allowed. The measurement is terminated."
-                    )
+            visa_magnet.field_setpoint_Tesla = value
+            return value
 
         visa_magnet = self.quantity_setpoint_ramp.get(quantity, None)
         if visa_magnet is not None:
             assert isinstance(value, float)
-            if visa_magnet:
-                if self._ramp_rate_ok(visa_magnet, value):
-                    visa_magnet.field_ramp_TeslaPers = value
-                    return value
-                else:
-                    raise Exception(
-                        "Maximum Ramp rate exceeded. The measurement is terminated."
-                    )
+            max_ramp_Tpers = visa_magnet.magnet.max_rampr_rate_Tpers
+            if value <= max_ramp_Tpers:
+                visa_magnet.field_ramp_TeslaPers = value
+                return value
+
+            logger.warning(
+                f"Maximum Ramp rate clipped from {value:0.4f} T/s to {max_ramp_Tpers:0.4f} T/s."
+            )
+            return max_ramp_Tpers
 
         if quantity is Quantity.ControlLogging:
             self._logging = EnumLogging.get_exception(value)
             return value
         if quantity is Quantity.ControlMode:
-            self._mode = ControlMode.get_exception(value)
+            self._mode = ControlMode.get_valuelabber_exception(value)
             return value
         if quantity is Quantity.StatusSwitchheaterStatus:
             # TODO
@@ -521,12 +497,17 @@ class VisaStation:
             # return self.switchheater_status = v_dict[value]
             return value
         if quantity is Quantity.ControlHoldSwitchheaterOn:
-            v_dict = {"True": True, "False": False}
-            self.holding_switchheater_on = v_dict[value]
+            v_dict = {"True": 1, "False": 0}
+            # self.holding_switchheater_on = v_dict[value]
+            if isinstance(value, str):
+                value = v_dict[value]
+            self.holding_switchheater_on = abs(value) > 0.5
             return value
         if quantity is Quantity.ControlHoldCurrent:
-            v_dict = {"True": True, "False": False}
-            self.holding_current = v_dict[value]
+            v_dict = {"True": 1, "False": 0}
+            if isinstance(value, str):
+                value = v_dict[value]
+            self.holding_current = abs(value) > 0.5
             return value
         if quantity is Quantity.ControlLabberState:
 
@@ -553,6 +534,7 @@ class VisaStation:
         raise Exception(f"set_quantity(): Unknown quantity '{quantity.name}' {value}")
 
     def wait_till_ramped(self):
+        self.station.validate_field_limit(visa_station=self)
         self.start_ramping()
         start_s = time.time()
         while True:
@@ -894,23 +876,7 @@ def main():
         visa_station.visa_magnet_y.ramping()
         visa_magnet = visa_station.visa_magnet_y
 
-    visa_station.holding_switchheater_on = False
-    visa_station.holding_current = True
-    visa_station.visa_magnet_y.field_setpoint_Tesla = 0.01
-    visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
-    visa_station.visa_magnet_z.field_setpoint_Tesla = 0.000
-    visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
-    visa_station.wait_till_ramped()
-    visa_station.visa_magnet_y.field_setpoint_Tesla = 0.02
-    visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
-    visa_station.visa_magnet_z.field_setpoint_Tesla = 0.01
-    visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
-    visa_station.wait_till_ramped()
-    visa_station.visa_magnet_y.field_setpoint_Tesla = 0.00
-    visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
-    visa_station.visa_magnet_z.field_setpoint_Tesla = 0.01
-    visa_station.visa_magnet_z.field_ramp_TeslaPers = 0.001
-    visa_station.wait_till_ramped()
+    visa_station.set_quantity(Quantity.ControlMode, "PASSIVE")
     return
     t0 = time.time()
     visa_station.start_ramping()

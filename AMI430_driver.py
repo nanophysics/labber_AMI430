@@ -71,7 +71,7 @@ class Driver(InstrumentDriver.InstrumentWorker):
                 self._ramping_required = True
 
             if self.isFinalCall(options):
-                if self.visa_station._mode == AMI430_visa.ControlMode.RAMPING_WAIT:
+                if self.visa_station._mode is AMI430_visa.ControlMode.RAMPING_WAIT:
                     if self._ramping_required:
                         self._ramping_required = False
                         logger.info(
@@ -104,10 +104,11 @@ class Driver(InstrumentDriver.InstrumentWorker):
             quantity = Quantity(quant.name)
         except:
             raise Exception("performGetValue(): Unknown quant.name={quant.name} ")
-            
 
         try:
             value = self._thread.get_quantity_sync(quantity=quantity)
             return value
         except:
-            raise Exception(f"performGetValue(): Failed to get_quantity_sync(quantity={quantity}) ")
+            raise Exception(
+                f"performGetValue(): Failed to get_quantity_sync(quantity={quantity}) "
+            )

@@ -14,7 +14,7 @@ field_limit = (
 def get_station():
     station = Station(
         name="Simulation",
-        field_limit=field_limit,
+        validate_field_limit=field_limit,
         use_visa_simulation=True,
         x_axis=Magnet(
             ip_address="GPIB::1::INSTR",
