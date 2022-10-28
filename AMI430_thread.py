@@ -113,13 +113,13 @@ class VisaThread(threading.Thread):
         assert isinstance(name, str)
         quantity = Quantity(name)
 
-        if quantity == Quantity.ControlWriteTemperatureAndSettle_K:
+        if quantity is Quantity.ControlWriteTemperatureAndSettle_K:
             return self._set_temperature_and_settle(quantity=quantity, value=value)
 
         return self.set_quantity_sync(quantity=quantity, value=value)
 
     def _set_temperature_and_settle_obsolete(self, quantity: Quantity, value: float):
-        assert quantity == Quantity.ControlWriteTemperatureAndSettle_K
+        assert quantity is Quantity.ControlWriteTemperatureAndSettle_K
 
         def block_until_settled():
             tick_count_before = self._visa_station.tick_count

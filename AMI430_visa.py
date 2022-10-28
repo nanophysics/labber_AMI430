@@ -376,9 +376,8 @@ class VisaStation:
         self.init_logger()
 
     def init_logger(self) -> None:
-        pth = os.path.normpath(r"C:\Users\measure\Labber\Drivers\labber_AMI430")
-        pth = os.path.join(pth, "tmp_AMI430.log")
-        fh = logging.FileHandler(pth)
+        logfile = DIRECTORY_OF_THIS_FILE / f"tmp_AMI430_{self.station.name}.log"
+        fh = logging.FileHandler(logfile)
         fh.setLevel(logging.DEBUG)
         formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         fh.setFormatter(formatter)
@@ -486,8 +485,8 @@ class VisaStation:
         return False
 
     def _set_quantity(self, quantity: Quantity, value):
-        try:
-            visa_magnet = self.quantity_setpoint_field[quantity]
+        visa_magnet = self.quantity_setpoint_field.get(quantity, None)
+        if visa_magnet is not None:
             assert isinstance(value, float)
             if visa_magnet:
                 if self._check_field_limit(quantity, value):
@@ -497,10 +496,9 @@ class VisaStation:
                     raise Exception(
                         "The value is not allowed. The measurement is terminated."
                     )
-        except KeyError:
-            pass
-        try:
-            visa_magnet = self.quantity_setpoint_ramp[quantity]
+
+        visa_magnet = self.quantity_setpoint_ramp.get(quantity, None)
+        if visa_magnet is not None:
             assert isinstance(value, float)
             if visa_magnet:
                 if self._ramp_rate_ok(visa_magnet, value):
@@ -510,28 +508,27 @@ class VisaStation:
                     raise Exception(
                         "Maximum Ramp rate exceeded. The measurement is terminated."
                     )
-        except KeyError:
-            pass
-        if quantity == Quantity.ControlLogging:
+
+        if quantity is Quantity.ControlLogging:
             self._logging = EnumLogging.get_exception(value)
             return value
-        if quantity == Quantity.ControlMode:
+        if quantity is Quantity.ControlMode:
             self._mode = ControlMode.get_exception(value)
             return value
-        if quantity == Quantity.StatusSwitchheaterStatus:
+        if quantity is Quantity.StatusSwitchheaterStatus:
             # TODO
             v_dict = {"ON": True, "OFF": False}
             # return self.switchheater_status = v_dict[value]
             return value
-        if quantity == Quantity.ControlHoldSwitchheaterOn:
+        if quantity is Quantity.ControlHoldSwitchheaterOn:
             v_dict = {"True": True, "False": False}
             self.holding_switchheater_on = v_dict[value]
             return value
-        if quantity == Quantity.ControlHoldCurrent:
+        if quantity is Quantity.ControlHoldCurrent:
             v_dict = {"True": True, "False": False}
             self.holding_current = v_dict[value]
             return value
-        if quantity == Quantity.ControlLabberState:
+        if quantity is Quantity.ControlLabberState:
 
             # if isinstance(value, float):
             #     # The measurement windows seems to send a float, but a text of the state was expected...
@@ -552,8 +549,8 @@ class VisaStation:
 
             action()
             return self.get_labber_state().name
-        logger.warning(f"set_quantity: Unknown quantity '{quantity.name}' {value}")
-        return 43
+
+        raise Exception(f"set_quantity(): Unknown quantity '{quantity.name}' {value}")
 
     def wait_till_ramped(self):
         self.start_ramping()
@@ -582,44 +579,46 @@ class VisaStation:
         visa_magnet = self.visa_magnet_z
         if visa_magnet is None:
             return 0
+        if not visa_magnet.magnet.has_switchheater:
+            return 0
         return visa_magnet.switchheater_state
 
     def get_quantity(self, quantity: Quantity) -> Any:
         assert isinstance(quantity, Quantity)
-        if quantity == Quantity.ConfigName:
+        if quantity is Quantity.ConfigName:
             return self.station.name
-        if quantity == Quantity.ConfigAxis:
+        if quantity is Quantity.ConfigAxis:
             return self.station.axis.name
-        if quantity == Quantity.ControlLogging:
+        if quantity is Quantity.ControlLogging:
             return self._logging.value
-        if quantity == Quantity.StatusSwitchheaterStatus:
+        if quantity is Quantity.StatusSwitchheaterStatus:
             return self.switchheater_state
-        if quantity == Quantity.ControlHoldSwitchheaterOn:
+        if quantity is Quantity.ControlHoldSwitchheaterOn:
             return self.holding_switchheater_on
-        if quantity == Quantity.ControlHoldCurrent:
+        if quantity is Quantity.ControlHoldCurrent:
             return self.holding_current
-        if quantity == Quantity.ControlLabberState:
+        if quantity is Quantity.ControlLabberState:
             return self.get_labber_state().name
-        if quantity == Quantity.ControlMode:
+        if quantity is Quantity.ControlMode:
             return self._mode.name
 
-        try:
-            return self.quantity_setpoint_field[quantity].field_setpoint_Tesla
-        except KeyError:
-            pass
-        try:
-            return self.quantity_setpoint_ramp[quantity].field_ramp_TeslaPers
-        except KeyError:
-            pass
-        try:
-            return self.quantity_magnet_state[quantity].visa_state.name
-        except KeyError:
-            pass
-        try:
-            return self.quantity_magnet_field_actual[quantity].visa_field_T
-        except KeyError:
-            pass
-        logger.warning(f"get_quantity: Unknown quantity '{quantity.name}'")
+        visa_maget = self.quantity_setpoint_field.get(quantity, None)
+        if visa_maget is not None:
+            return visa_maget.field_setpoint_Tesla
+
+        visa_maget = self.quantity_setpoint_ramp.get(quantity, None)
+        if visa_maget is not None:
+            return visa_maget.field_ramp_TeslaPers
+
+        visa_maget = self.quantity_magnet_state.get(quantity, None)
+        if visa_maget is not None:
+            return visa_maget.visa_state.name
+
+        visa_maget = self.quantity_magnet_field_actual.get(quantity, None)
+        if visa_maget is not None:
+            return visa_maget.visa_field_T
+
+        raise Exception(f"get_quantity(): Unknown quantity '{quantity.name}'")
 
     @property
     def quantity_setpoint_ramp(self):
@@ -866,7 +865,10 @@ class VisaMagnet:
         if astype is None:
             # logger.debug(self.prefix(f"Response: '{response}'"))
             return response
-        response_type = astype(response)
+        try:
+            response_type = astype(response)
+        except Exception as e:
+            raise Exception(f"_ask_raw({cmd!r}, {astype!r}") from e
         # logger.debug(self.prefix(f"Response: {repr(response_type)}"))
         return response_type
 

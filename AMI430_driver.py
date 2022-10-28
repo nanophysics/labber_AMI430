@@ -102,10 +102,12 @@ class Driver(InstrumentDriver.InstrumentWorker):
 
         try:
             quantity = Quantity(quant.name)
+        except:
+            raise Exception("performGetValue(): Unknown quant.name={quant.name} ")
+            
+
+        try:
             value = self._thread.get_quantity_sync(quantity=quantity)
             return value
         except:
-            print(" ???", quant.name, value)
-            pass
-
-        logger.error(f"performGetValue: Unknown quantity '{quant.name}'")
+            raise Exception(f"performGetValue(): Failed to get_quantity_sync(quantity={quantity}) ")

@@ -1,3 +1,4 @@
+import numpy as np
 from AMI430_utils import Station, Magnet
 
 field_limit = (

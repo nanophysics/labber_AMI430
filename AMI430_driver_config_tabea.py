@@ -20,13 +20,21 @@ def get_station():
             current_limit_A=61.98,  # Ampere
             field_limit_T=6,  # Tesla
             ramp_rate_limit_Apers=0.0909,  # Ampere/s
+            ramp_rate_initial_Apers=0.02,
+            inductance_H=28.3,
             has_switchheater=True,
+            switchheater_heat_time_s=30.0,
+            switchheater_cool_time_s=600.0,
+            switchheater_current_A=20.1e-3,
+            persisten_current_rampe_rate_Apers=10.0,
         ),
         y_axis=Magnet(
             ip_address="169.254.223.195",
             current_limit_A=12.23,  # Ampere
             field_limit_T=12.34,  # Tesla
             ramp_rate_limit_Apers=12.34,  # Ampere/s
+            ramp_rate_initial_Apers=0.02,
+            inductance_H=28.3,
             has_switchheater=False,
         )
     )
