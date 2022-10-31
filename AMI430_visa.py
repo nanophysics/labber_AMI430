@@ -129,30 +129,70 @@ class RampingStatemachineMagnet:
                 )
                 < 1e-12
             ):
+                # if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                #     logger.info(self.prefix("Field already at setpoint: Skip ramp"))
+                #     self._state = MagnetRampingState.DONE
+                #     return
+                # if self._visa_magnet.magnet.has_switchheater:
 
-                if self._visa_magnet.visa_state == AMI430State.HOLDING:
-                    logger.info(self.prefix("Field already at setpoint: Skip ramp"))
-                    self._state = MagnetRampingState.DONE
-                    return
+                #     if self._visa_magnet.visa_station.holding_current:
+                #         logger.info(
+                #             self.prefix(
+                #                 "Field already at setpoint with switch warm and holding current: Skip ramp"
+                #             )
+                #         )
+                #         self._state = MagnetRampingState.DONE
+                #         return
+                #     if not self._visa_magnet.visa_station.holding_switchheater_on:
+                #         if self._visa_magnet.visa_state == AMI430State.AT_ZERO_CURRENT:
+                #             logger.info(
+                #                 self.prefix(
+                #                     "Field already at setpoint with cold switch: Skip ramp"
+                #                 )
+                #             )
+                #             self._state = MagnetRampingState.DONE
+                #             return
                 if self._visa_magnet.magnet.has_switchheater:
-
                     if self._visa_magnet.visa_station.holding_current:
-                        logger.info(
-                            self.prefix(
-                                "Field already at setpoint with switch warm and holding current: Skip ramp"
-                            )
-                        )
-                        self._state = MagnetRampingState.DONE
-                        return
-                    if not self._visa_magnet.visa_station.holding_switchheater_on:
-                        if self._visa_magnet.visa_state == AMI430State.AT_ZERO_CURRENT:
+                        if self._visa_magnet.visa_station.holding_switchheater_on:
+                            if self._visa_magnet.switchheater_state:
+                                self._state = MagnetRampingState.DONE
+                                logger.info(
+                                    self.prefix(
+                                        "Field already at setpoint with switch warm and holding current: Skip ramp"
+                                    )
+                                )
+                                # return
+                        if not self._visa_magnet.switchheater_state:
+                            self._state = MagnetRampingState.DONE
                             logger.info(
                                 self.prefix(
-                                    "Field already at setpoint with cold switch: Skip ramp"
+                                    "Field already at setpoint with switch cold: Skip ramp"
                                 )
                             )
-                            self._state = MagnetRampingState.DONE
-                            return
+                            # return
+                    if not self._visa_magnet.visa_station.holding_current:
+                        if not self._visa_magnet.switchheater_state:
+                            logger.info(
+                                self.prefix("We are checking if at zero current is ok")
+                            )
+                            if (
+                                self._visa_magnet.visa_state
+                                == AMI430State.AT_ZERO_CURRENT
+                            ):
+                                self._state = MagnetRampingState.DONE
+                                logger.info(
+                                    self.prefix(
+                                        "Field already at setpoint with switch cold and zero current: Skip ramp"
+                                    )
+                                )
+                                # return
+                else:
+                    if self._visa_magnet.visa_state == AMI430State.HOLDING:
+                        logger.info(self.prefix("Field already at setpoint: Skip ramp"))
+                        self._state = MagnetRampingState.DONE
+                        # return
+        # return
 
         # self._visa_magnet.ensure_switch_on()
 
@@ -406,12 +446,16 @@ class VisaStation:
             return LabberState.MISALIGNED
 
         def fix_state(visa_magnet: VisaMagnet) -> AMI430State:
+            logger.info("We are checking if we can terminate the statemachine")
+            logger.info(
+                f"****************************The relevant variables are Switchheater yes/no {visa_magnet.magnet.has_switchheater}Hold current yes/no {visa_magnet.visa_station.holding_current} Hold switchheater yes/no {visa_magnet.visa_station.holding_switchheater_on}"
+            )
             if visa_magnet.magnet.has_switchheater:
-                if not visa_magnet.visa_station.holding_switchheater_on:
-                    if visa_magnet.visa_state is AMI430State.PAUSED:
-                        return AMI430State.HOLDING
                 if not visa_magnet.visa_station.holding_current:
                     if visa_magnet.visa_state is AMI430State.AT_ZERO_CURRENT:
+                        return AMI430State.HOLDING
+                if not visa_magnet.visa_station.holding_switchheater_on:
+                    if visa_magnet.visa_state is AMI430State.PAUSED:
                         return AMI430State.HOLDING
             return visa_magnet.visa_state
 
@@ -503,12 +547,15 @@ class VisaStation:
                 value = v_dict[value]
             self.holding_switchheater_on = abs(value) > 0.5
             return value
+            # self.holding_switchheater_on = abs(value)> 0.5
+            # return value 
         if quantity is Quantity.ControlHoldCurrent:
             v_dict = {"True": 1, "False": 0}
             if isinstance(value, str):
                 value = v_dict[value]
             self.holding_current = abs(value) > 0.5
             return value
+
         if quantity is Quantity.ControlLabberState:
 
             # if isinstance(value, float):
@@ -542,6 +589,7 @@ class VisaStation:
                 self.get_labber_state()
             )  # we change the order here to observe if this changes something.
             self.tick()
+            logger.info(f"Status of the RampingStatemachine {self._state_machine.done}")
             logger.info(f"{LoggerTags.LABBER_STATE.name} {labber_state.name}")
             logger.info(
                 f"{LoggerTags.RAMPING_DURATION_S.name} {time.time()-start_s:0.3} {self.statetext}"
@@ -870,13 +918,15 @@ def main():
     station = get_station()
     visa_station = VisaStation(station=station)
     visa_station.open()
+    visa_station.visa_magnet_z.magnet.has_switchheater
+    visa_station.visa_magnet_x.magnet.has_switchheater
     if False:
         visa_station.visa_magnet_y.field_setpoint_Tesla = 0.01
         visa_station.visa_magnet_y.field_ramp_TeslaPers = 0.001
         visa_station.visa_magnet_y.ramping()
         visa_magnet = visa_station.visa_magnet_y
 
-    visa_station.set_quantity(Quantity.ControlMode, "PASSIVE")
+    # visa_station.set_quantity(Quantity.ControlMode, "PASSIVE")
     return
     t0 = time.time()
     visa_station.start_ramping()
