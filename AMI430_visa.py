@@ -82,15 +82,10 @@ class LabberState(EnumMixin, enum.Enum):
     IDLE = 4
     MISALIGNED = 5
     ERROR = 6
-    # OFF = 8
 
     @classmethod
     def valid_set_by_labber(cls) -> Set["LabberState"]:
         return {cls.RAMPING, cls.PAUSED, cls.OFF}
-
-    # @classmethod
-    # def valid_set_by_magnet(cls) -> List["LabberState"]:
-    #     return [cls.HOLDING, cls.IDLE]
 
 
 class ControlMode(EnumMixin, enum.Enum):

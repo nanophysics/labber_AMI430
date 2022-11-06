@@ -13,32 +13,41 @@
 
 | Category | Name | Values | Comment |
 | - | - | - | - |
-| Config | Axis | [AXIS2,AXIS3] | - |
-| Control | Logging | [DEBUG,INFO,WARNING] | - |
-| Control | Mode | [PASSIVE,RAMPING_WAIT] | see below |
-| Control | Labber State | many | see below |
-| Control | Field Setpoint X, Y, Z | float | [T] target field |
-| Control | Hold Switchheater on Z | [False, True] | True: cool down switchheater (slow) |
-| Control | Hold Current Z | [False,True] | If switchheater is cold: True: hold current False: do zerocurrent |
-| Control | Ramp Rate X, Y, Z | float | [T/s] ramping speed |
-| Status | Switchheater Status Z | [OFF, ON] | current state of the switchheater |
-| Status | Field actual X, Y, Z | float | actual field |
-| Status | Magnet State X, Y, Z | many | see below |
+| `Config` | `Axis` | [AXIS2,AXIS3] | - |
+| `Control` | `Logging` | [DEBUG,INFO,WARNING] | - |
+| `Control` | `Mode` | [PASSIVE,RAMPING_WAIT] | see below |
+| `Control` | `Labber State` | many | see below |
+| `Control` | `Field Setpoint X, Y, Z` | float | [T] target field |
+| `Control` | `Hold Switchheater on Z` | [False, True] | True: cool down switchheater (slow) |
+| `Control` | `Hold Current Z` | [False,True] | If switchheater is cold: True: hold current False: do zerocurrent |
+| `Control` | `Ramp Rate X, Y, Z` | float | [T/s] ramping speed |
+| `Status` | `Switchheater Status Z` | [OFF, ON] | current state of the switchheater |
+| `Status` | `Field actual X, Y, Z` | float | actual field |
+| `Status` | `Magnet State X, Y, Z` | many | see below |
 
 ### Control / Mode
 
-**TODO: describe [PASSIVE,RAMPING_WAIT]**
+**TODO: describe/review**
+
+| Name | comment |
+| - | - |
+| `PASSIVE` | When updating `Control | Field Setpoint X, Y, Z` in Labber, the new field will NOT be applied. This is useful when controlling labber manually. |
+| `RAMPING_WAIT` | This mode has to be used during an experiment: After `Control | Field Setpoint X, Y, Z` has been changed, the new field will be applied the the experiment will wait (hangs) till ramping has finished. |
 
 ### Control / Labber State
 
-**TODO: describe states**
+**TODO: describe/review**
 
- * RAMPING
- * HOLDING
- * PAUSED
- * IDLE
- * MISALIGNED
- * ERROR
+The code implementing this table is implemented in `class LabberState()` in `AMI430_visa.py`.
+
+| Name | set by | comment |
+| - | - | - |
+| `RAMPING` | Labber | Labber driver will return immediately and start ramping towards the “field setpoint”. As soon as “field setpoint” is reached: switch to HOLDING |
+| `HOLDING` | Magnet | |
+| `PAUSED` | Labber | Labber driver will return immediately and stop ramping |
+| `IDLE` | Magnet | ... |
+| `MISALIGNED` | Magnet | The three magnets are NOT in the same state |
+| `ERROR` | Magnet | At least one magnet is in error state |
 
 ### Status | Magnet State X, Y, Z
 
@@ -49,16 +58,16 @@ See [Programmer Manual](manuals/mn-430-rev10.pdf)
  * table "Return Values and Meanings for `STATE?` Query" 
 
 Possible states:
- * RAMPING
- * HOLDING
- * PAUSED
- * MANUAL_UP
- * MANUAL_DOWN
- * ZEROING_CURRENT
- * QUENCH_DETECTED
- * AT_ZERO_CURRENT
- * HEATING_SWITCH
- * COOLING_SWITCH
+ * `RAMPING`
+ * `HOLDING`
+ * `PAUSED`
+ * `MANUAL_UP`
+ * `MANUAL_DOWN`
+ * `ZEROING_CURRENT`
+ * `QUENCH_DETECTED`
+ * `AT_ZERO_CURRENT`
+ * `HEATING_SWITCH`
+ * `COOLING_SWITCH`
 
 
 ## Changing field -> Statemachine
@@ -66,8 +75,8 @@ Possible states:
 The statemachine below might look difficult.
 
 These are the key concepts:
-* Magnets are always ramped in sequence. Rationale: Simplify driver.
-* When ramping fields, the magnets are choosen first, which lower there field. Rationale: Avoid overshoot field limits.
+* Magnets are always ramped in sequence (and not in parallel which would be faster). Rationale: Simplify driver.
+* When ramping fields, the magnets are choosen first, which lowers there field. The magnets which upper the file will be choosen last. Rationale: Avoid overshoot field limits.
 * For zerocurrent, the switchheater must be cool.
 * Before heating the switchheater, current must be applied. Rationale: Avoid quench.
 
@@ -97,20 +106,3 @@ stateDiagram-v2
     G --> [*]: all fields reached
 ```
 
-## Stati
-
-**TODO: Review this section**
-
-The code implementing this table may be found here: AMI430_visa.py
-
-| Name | set by | comment |
-| - | - | - |
-| RAMPING | Labber | Labber driver will return immediately and start ramping towards the “field setpoint”. As soon as “field setpoint” is reached: switch to HOLDING |
-| HOLDING | Magnet | |
-| PAUSED | Labber | Labber driver will return immediately and stop ramping |
-| IDLE | Magnet | ... |
-| OFF | Labber | Labber will block until state is reached |
-| PERSIST_HEATING | Labber | Labber will block until state is reached |
-| PERSIST_COOLING | Labber | Labber will block until state is reached |
-| MISALIGNED | Magnet | The three magnets are NOT in the same state |
-| ERROR | Magnet | At least one magnet is in error state |
