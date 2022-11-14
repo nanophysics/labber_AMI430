@@ -7,7 +7,7 @@ from AMI430_visa import *
 import matplotlib 
 matplotlib.rcParams['backend'] = 'Qt5Agg'
 from datetime import datetime
-filename = pathlib.Path('tmp_AMI430.log')
+filename = pathlib.Path('tmp_AMI430_Sofia.log')
      
 dataframes = (
     # DataFrameMagnetField("Magnet Field", magnet="Z"),

@@ -8,7 +8,7 @@ class FieldLimitViolation(Exception):
 
 
 def check_smaller_than(value: float, limit: float, msg: str) -> None:
-    if value > limit:
+    if value >= limit:
         raise FieldLimitViolation(f"{value} > {limit}: {msg}")
 
 
