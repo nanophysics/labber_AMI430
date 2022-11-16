@@ -8,8 +8,8 @@ class FieldLimitViolation(Exception):
 
 
 def check_smaller_than(value: float, limit: float, msg: str) -> None:
-    if value > limit:
-        raise FieldLimitViolation(f"{value} > {limit}: {msg}")
+    if value >= limit:
+        raise FieldLimitViolation(f"{value} >= {limit}: {msg}")
 
 
 class Axis(enum.IntEnum):

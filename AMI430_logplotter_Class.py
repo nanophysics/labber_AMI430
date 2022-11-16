@@ -51,7 +51,7 @@ class Plotter:
                 ax.legend()
         return
 
-    def plot_timewindow(self, dates: List[DateTime], fig: plt.figure) -> None:
+    def plot_timewindow(self, dates: List[datetime], fig: plt.figure) -> None:
 
         for ax in fig.get_axes():
             ax.set_xlim(dates)
@@ -88,6 +88,7 @@ class Plotter:
 
     def refresh_singleaxis(self) -> None:
         pass
+
 
 
 filename = pathlib.Path("tmp_AMI430_Sofia.log")

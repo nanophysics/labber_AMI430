@@ -157,15 +157,15 @@ class RampingStatemachineMagnet:
                                         "Field already at setpoint with switch warm and holding current: Skip ramp"
                                     )
                                 )
-                                # return
-                        if not self._visa_magnet.switchheater_state:
-                            self._state = MagnetRampingState.DONE
-                            logger.info(
-                                self.prefix(
-                                    "Field already at setpoint with switch cold: Skip ramp"
+                        else:       # return
+                            if not self._visa_magnet.switchheater_state:
+                                self._state = MagnetRampingState.DONE
+                                logger.info(
+                                    self.prefix(
+                                        "Field already at setpoint with switch cold: Skip ramp"
+                                    )
                                 )
-                            )
-                            # return
+                                # return
                     if not self._visa_magnet.visa_station.holding_current:
                         if not self._visa_magnet.switchheater_state:
                             logger.info(
