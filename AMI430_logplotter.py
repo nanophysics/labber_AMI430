@@ -13,18 +13,47 @@ from matplotlib.widgets import MultiCursor
 
 
 class Plotter:
-    def __init__(
-        self, dataframes: List[DataframeBase], filename: os.path, timewindow=None
-    ) -> None:
-        self.dataframes = dataframes
+    def __init__(self, axis: Axis, filename: os.path, timewindow=None) -> None:
+        self.axis = axis
         self._filename = filename
         self.timewindow = timewindow
+        self.dataframes = []
+        self._generate_dataframes()
         self._parse_logfile_to_dataframes()
 
     def _parse_logfile_to_dataframes(self):
         for log in parse_file(self._filename, self.timewindow):
             for dataframe in self.dataframes:
                 dataframe.pick2(log)
+
+    def _generate_dataframes(self):
+        if self.axis is Axis.AXIS3:
+            axislist = ["X", "Y", "Z"]
+        if self.axis is Axis.AXIS2:
+            axislist = ["Y", "Z"]
+        for dim in axislist:
+            self.dataframes.append(
+                DataFrameMagnetField(
+                    "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet=dim
+                )
+            )
+            self.dataframes.append(
+                DataFrameMagnetState(
+                    "Magnet State", logger_tag=LoggerTags.MAGNET_STATE, magnet=dim
+                )
+            )
+            self.dataframes.append(
+                DataFrameSetpoint(
+                    "Setpoint", logger_tag=LoggerTags.LABBER_SET, magnet=dim
+                )
+            )
+        self.dataframes.append(
+            DataframeBase("Labber State", logger_tag=LoggerTags.LABBER_STATE)
+        )
+        self.dataframes.append(
+            DataframeBase("Ramping Duration", logger_tag=LoggerTags.RAMPING_DURATION_S)
+        )
+        return
 
     def _axis_labeling(self, ax: plt.axes, logger_tag: LoggerTags) -> None:
         ax.set_title(logger_tag.name)
@@ -46,7 +75,7 @@ class Plotter:
             ax.set_ylabel("B Field [T]")
             return
         if logger_tag == LoggerTags.RAMPING_DURATION_S:
-            ax.set_ylabel('Ramping Duration [s]')
+            ax.set_ylabel("Ramping Duration [s]")
 
     def plot(self, logger_tag: LoggerTags, ax: plt.axes) -> None:
         for dataframe in self.dataframes:
@@ -85,65 +114,3 @@ class Plotter:
                             )
                         )
         return
-
-    def highlight_field_value(self) -> None:
-        pass
-
-    def _update_plot(self) -> None:
-        pass
-
-    def clear_dataframes(self) -> None:
-        pass
-
-    def refresh_singleaxis(self) -> None:
-        pass
-
-filename = pathlib.Path("tmp_AMI430_Sofia.log")
-dataframes = (
-    # dfMagnetField(@x@),
-    DataFrameMagnetField(
-        "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Z"
-    ),
-    DataFrameMagnetField(
-        "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Y"
-    ),
-    DataFrameMagnetState(
-        "Magnet State", logger_tag=LoggerTags.MAGNET_STATE, magnet="Y"
-    ),
-    DataFrameMagnetField(
-        "Magnet Field", logger_tag=LoggerTags.MAGNET_FIELD, magnet="Z"
-    ),
-    DataFrameMagnetState(
-        "Magnet State", logger_tag=LoggerTags.MAGNET_STATE, magnet="Z"
-    ),
-    DataframeBase("Labber State", logger_tag=LoggerTags.LABBER_STATE),
-    DataFrameSetpoint("Setpoint", logger_tag=LoggerTags.LABBER_SET, magnet="Z"),
-    DataFrameSetpoint("Setpoint", logger_tag=LoggerTags.LABBER_SET, magnet="X"),
-    DataFrameSetpoint("Setpoint", logger_tag=LoggerTags.LABBER_SET, magnet="Y"),
-    DataframeBase("Ramping Duration", logger_tag=LoggerTags.RAMPING_DURATION_S),
-)
-
-timewindow = ["2022-10-31", "2022-11-10"]
-
-# plotter = Plotter(dataframes, filename,timewindow) # Keep this separate otherwise the dataframes are parsed several times.
-plotter = Plotter(dataframes, filename,timewindow)
-
-
-def main():
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-    timewindow = [datetime(2022, 10, 31, 0, 0, 0), datetime(2022, 11, 5, 0, 0, 0)]
-    plotter = Plotter(dataframes, filename, timewindow)
-    # plotter = Plotter(dataframes, filename)
-    plotter.plot(LoggerTags.MAGNET_FIELD, ax1)
-    plotter.plot(LoggerTags.MAGNET_STATE, ax2)
-    # plotter.plot(LoggerTags.MAGNET_STATE, ax2)
-    plotter.plot(LoggerTags.LABBER_STATE, ax3)
-    multi = MultiCursor(fig.canvas, (ax1, ax2, ax3), color="r", lw=1)
-    # dates = [datetime(2022, 10, 24, 0, 0, 0), datetime(2022, 10, 24, 23, 0, 0)]
-    # plotter.plot_timewindow(dates, fig)
-    plotter.highlight_state(fig, LoggerTags.LABBER_STATE, state=LabberState.HOLDING)
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()

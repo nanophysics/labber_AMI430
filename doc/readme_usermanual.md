@@ -219,7 +219,15 @@ Message: The messages are individual for each logger tag
 
 ## Visualizing the Log messages
 
-The data in the log file can be parsed and plotted using the AMI430_logparser and logplotter. An example code is presented in TODO.
+The data in the log file can be parsed and plotted using the AMI430_logparser and logplotter. An example code is presented in the AMI430_logplotter.ipynb .  At the moment we differentiate the following 5 data types. 
+
+* Magnetic Field 
+* State of the Magnet 
+* Labber State 
+* Ramping Duration 
+* Setpoint
+
+The plotter class takes care of initializing the correct data frames and parse the log file. As an Input it needs to know if it is a two or three axis magnet (Axis.AXIS3 or Axis.AXIS2), the path to the logfile and if wished a timewidnow in string format. 
 
 
 
