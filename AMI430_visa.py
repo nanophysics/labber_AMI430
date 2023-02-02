@@ -35,7 +35,6 @@ class LoggerTags(EnumMixin, enum.Enum):
     @classmethod
     def general_properties(cls) -> Set["LoggerTags"]:
         return {
-            cls.LABBER_SET,
             cls.LABBER_STATE,
             cls.STATION_RAMPING_STATE,
             cls.RAMPING_DURATION_S,

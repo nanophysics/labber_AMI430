@@ -180,15 +180,14 @@ It uses some PID type controller to reach the desired magnetic field setpoint. O
         return 100.0 - self.inductance_H
 ```
 By default, the AMI 430 programmer initializes the stability parameter to 0. 
-
-The pictures below shows how the magnet approaches a setpoint of 100mT with different stability settings: 
-
-
-TODO: Add pictures of the different stability settings that show how they affect the stability of the magnetic field. 
+The pictures below shows how the magnet approaches a setpoint of 100mT with (left) the correct stability setting and (right) a stability setting of 100.
 
 
-From the pictures above we see that the stability of the magnetic field heavily depends on these settings. The driver has the ability to log commands and queries sent to the magnet. These commands are continiously stored in a log file. Unfortunately we can not attach a log file for each measurement as we do not have the ability to determine when labber starts a new measurement and what its name is. 
+| ![Some handle](../doc/images/Setpoint100mT_triggerholdatfirstencounter_optimal_stabilityparameterb.png) |![Some handle](../doc/images/Setpoint100mT_triggerholdatfirstencounterb.png) |
+| --- | --- |
 
+
+From the pictures above we see that the stability of the magnetic field heavily depends on these settings and the even bigger problem is, that the AMI430 problem switches to the Holding state even though the field has not yet stabilized. For this reason we want to be able to log the B(t) curve of the magnet. The driver has the ability to log commands and queries sent to the magnet. These commands are continiously stored in a log file. Unfortunately we can not attach a log file for each measurement as we do not have the ability to determine when labber starts a new measurement and what its name is. 
 
 The logging depth of the driver has three settings as described above. Debug, Info and Warning.
 
@@ -220,7 +219,15 @@ Message: The messages are individual for each logger tag
 
 ## Visualizing the Log messages
 
-The data in the log file can be parsed and plotted using the AMI430_logparser and logplotter. An example code is presented in TODO.
+The data in the log file can be parsed and plotted using the AMI430_logparser and logplotter. An example code is presented in the AMI430_logplotter.ipynb .  At the moment we differentiate the following 5 data types. 
+
+* Magnetic Field 
+* State of the Magnet 
+* Labber State 
+* Ramping Duration 
+* Setpoint
+
+The plotter class takes care of initializing the correct data frames and parse the log file. As an Input it needs to know if it is a two or three axis magnet (Axis.AXIS3 or Axis.AXIS2), the path to the logfile and if wished a timewidnow in string format. 
 
 
 
