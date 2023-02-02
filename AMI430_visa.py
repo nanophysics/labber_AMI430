@@ -147,6 +147,10 @@ class RampingStatemachineMagnet:
                 #             )
                 #             self._state = MagnetRampingState.DONE
                 #             return
+                logger.info(f"The setpoint is {self._visa_magnet.field_setpoint_Tesla}")
+                logger.info(
+                    f"The actual field is {self._visa_magnet.field_actual_Tesla}"
+                )
                 if self._visa_magnet.magnet.has_switchheater:
                     if self._visa_magnet.visa_station.holding_current:
                         if self._visa_magnet.visa_station.holding_switchheater_on:
@@ -157,7 +161,7 @@ class RampingStatemachineMagnet:
                                         "Field already at setpoint with switch warm and holding current: Skip ramp"
                                     )
                                 )
-                        else:       # return
+                        else:  # return
                             if not self._visa_magnet.switchheater_state:
                                 self._state = MagnetRampingState.DONE
                                 logger.info(
@@ -543,7 +547,7 @@ class VisaStation:
             self.holding_switchheater_on = abs(value) > 0.5
             return value
             # self.holding_switchheater_on = abs(value)> 0.5
-            # return value 
+            # return value
         if quantity is Quantity.ControlHoldCurrent:
             v_dict = {"True": 1, "False": 0}
             if isinstance(value, str):

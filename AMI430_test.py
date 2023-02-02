@@ -8,7 +8,7 @@ import AMI430_driver_config_sofia
 import AMI430_driver_config_tabea
 
 sofia = AMI430_driver_config_sofia.get_station()
-tabea = AMI430_driver_config_tabea.get_station()
+#tabea = AMI430_driver_config_tabea.get_station()
 
 
 def verify_field(station: Station, x: float, y: float, z: float):
@@ -34,6 +34,8 @@ def verify_field(station: Station, x: float, y: float, z: float):
         (sofia, 0, 3 / np.sqrt(2), 3 / np.sqrt(2)),
         (sofia, 1 / np.sqrt(2), 1 / np.sqrt(2), 0),
         (sofia, 1 / np.sqrt(2), 0, 1 / np.sqrt(2)),
+        (sofia, 0,0,6.0),
+        (sofia,1.0,0,0)
     ),
 )
 def test_limits_valid(station: Station, x: float, y: float, z: float):

@@ -43,14 +43,14 @@ def get_station() -> Station:
         ),
         z_axis=Magnet(
             ip_address="TCPIP0::169.254.201.182::7180::SOCKET",
-            current_limit_A=61.98,  # Ampere
+            current_limit_A= 61.98,  # 61.98,  # Ampere
             field_limit_T=6.0,  # Tesla
             ramp_rate_limit_Apers=0.0909,  # Ampere/s
             ramp_rate_initial_Apers=0.06,
             inductance_H=11.0,  # Henry
             has_switchheater=True,
             switchheater_heat_time_s=30.0,
-            switchheater_cool_time_s=30.0,  # 600.0, changed it for test purposes
+            switchheater_cool_time_s=600.0,
             switchheater_current_A=20.1e-3,
             persisten_current_rampe_rate_Apers=10.0,
         ),
